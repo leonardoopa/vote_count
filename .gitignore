@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.python-version
+
+# Configuração local (use .env.example como modelo)
+.env
+
+# Testes e ferramentas
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editores e sistema
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+
+# Worktrees do Claude Code
+.claude/worktrees/

@@ -1,0 +1,10 @@
+services:
+  contador:
+    build: .
+    ports:
+      # só esta máquina acessa; troque por "${PORTA:-8000}:8000" para abrir na rede
+      - "127.0.0.1:${PORTA:-8000}:8000"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]

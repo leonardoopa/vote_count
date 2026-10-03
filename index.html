@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contador de votos 2026</title>
+<meta name="description" content="Acompanhe a totalização das Eleições 2026 em tempo real, com dados oficiais do TSE.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10);
+  --series: #2a78d6;
+  --track: #cde2fb;
+  --good: #006300;
+  --wash: rgba(11, 11, 11, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --series: #3987e5;
+    --track: #0d366b;
+    --good: #0ca30c;
+    --wash: rgba(255, 255, 255, 0.06);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.pagina { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }
+h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.sub { margin: 2px 0 0; color: var(--ink-2); }
+.cabecalho { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-end; justify-content: space-between; }
+.selos { display: flex; flex-wrap: wrap; gap: 8px; }
+.selo {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface);
+  font-size: 0.8125rem; color: var(--ink-2);
+}
+.selo.atencao { color: var(--ink); border-color: var(--ink-2); }
+
+.filtros { display: flex; flex-wrap: wrap; gap: 12px 16px; margin: 20px 0 16px; }
+.filtros label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 9.5rem; max-width: 15rem; font-size: 0.8125rem; color: var(--ink-2); }
+.filtros select {
+  width: 100%; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  font: inherit;
+}
+select:focus-visible, button:focus-visible, .linha:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+
+.aviso { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--ink-2); background: var(--surface); font-size: 0.9375rem; }
+.aviso[hidden] { display: none; }
+
+.painel { transition: opacity 0.15s; }
+.painel.carregando { opacity: 0.55; }
+
+.cartao { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+.heroi { margin-bottom: 12px; }
+.heroi .rotulo { color: var(--ink-2); font-size: 0.875rem; }
+.heroi .valor { font-size: 3.25rem; line-height: 1.1; font-weight: 650; letter-spacing: -0.02em; }
+.heroi .detalhe { color: var(--ink-2); font-size: 0.875rem; margin-top: 4px; }
+.medidor { height: 8px; border-radius: 4px; background: var(--track); margin: 10px 0 8px; overflow: hidden; }
+.medidor > i { display: block; height: 100%; background: var(--series); border-radius: 4px; transition: width 0.4s; }
+
+.indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.indicador .rotulo { color: var(--ink-2); font-size: 0.8125rem; }
+.indicador .valor { font-size: clamp(1.1rem, 2vw + 0.7rem, 1.5rem); font-weight: 600; overflow-wrap: anywhere; }
+.indicador .detalhe { color: var(--muted); font-size: 0.8125rem; }
+
+.lista-titulo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin: 0 0 8px; }
+.lista-titulo span { color: var(--ink-2); font-size: 0.875rem; }
+.ranking { list-style: none; margin: 0; padding: 4px 0; }
+.linha {
+  display: grid; align-items: center; gap: 2px 12px;
+  grid-template-columns: 2rem minmax(9rem, 17rem) 1fr 7.5rem 4.75rem;
+  padding: 8px 12px; border-radius: 8px;
+}
+.linha:hover, .linha.foco { background: var(--wash); }
+.pos { color: var(--muted); font-variant-numeric: tabular-nums; }
+.nome { font-weight: 600; overflow-wrap: anywhere; }
+.meta { color: var(--ink-2); font-size: 0.8125rem; }
+.meta .eleito { color: var(--good); font-weight: 600; }
+.trilho { border-left: 1px solid var(--baseline); height: 14px; }
+.barra { height: 14px; background: var(--series); border-radius: 0 4px 4px 0; transition: width 0.4s; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.num.pct { font-weight: 600; }
+.mais { margin: 12px 12px 0; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.mais:hover { background: var(--wash); }
+.mais[hidden] { display: none; }
+.vazio { padding: 24px 12px; color: var(--ink-2); }
+
+.dica {
+  position: fixed; z-index: 10; pointer-events: none; max-width: 260px;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  font-size: 0.8125rem;
+}
+.dica[hidden] { display: none; }
+.dica strong { display: block; font-size: 1rem; }
+.dica span { color: var(--ink-2); }
+
+.rodape { margin-top: 28px; color: var(--ink-2); font-size: 0.8125rem; }
+.rodape p { margin: 4px 0; }
+.rodape a { color: inherit; }
+
+@media (max-width: 640px) {
+  .heroi .valor { font-size: 3rem; }
+  .linha {
+    grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+    grid-template-areas: "pos quem pct" "pos quem votos" ". trilho trilho";
+    align-items: start;
+    row-gap: 6px;
+    padding: 10px 8px;
+  }
+  .linha > .pos { grid-area: pos; }
+  .linha > .quem { grid-area: quem; }
+  .linha > .trilho { grid-area: trilho; }
+  .linha > .votos { grid-area: votos; color: var(--ink-2); font-size: 0.8125rem; }
+  .linha > .pct { grid-area: pct; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .painel, .medidor > i, .barra { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="pagina">
+  <header class="cabecalho">
+    <div>
+      <h1>Contador de votos · Eleições 2026</h1>
+      <p class="sub" id="subtitulo">Carregando…</p>
+    </div>
+    <div class="selos" id="selos" aria-live="polite"></div>
+  </header>
+
+  <form class="filtros" id="filtros" onsubmit="return false">
+    <label>Cargo <select id="cargo"></select></label>
+    <label>Território <select id="uf"></select></label>
+    <label>Turno
+      <select id="turno"><option value="1">1º turno (04/10)</option><option value="2">2º turno (25/10)</option></select>
+    </label>
+    <label>Dados
+      <select id="ambiente"><option value="oficial">Oficiais do TSE</option><option value="simulado">Simulado (teste)</option></select>
+    </label>
+  </form>
+
+  <p class="aviso" id="aviso" role="status" hidden></p>
+
+  <main class="painel" id="painel">
+    <section class="cartao heroi" aria-label="Progresso da apuração">
+      <div class="rotulo">Seções apuradas</div>
+      <div class="valor" id="heroi-valor">—</div>
+      <div class="medidor" role="progressbar" aria-label="Seções apuradas" aria-valuemin="0" aria-valuemax="100" id="medidor"><i id="medidor-barra" style="width:0"></i></div>
+      <div class="detalhe" id="heroi-detalhe"></div>
+    </section>
+
+    <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
+
+    <section class="cartao" aria-labelledby="lista-h">
+      <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
+      <ol class="ranking" id="ranking"></ol>
+      <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <p id="rodape-tempo"></p>
+    <p>Quase em tempo real: os totais vêm do TSE, que publica a cada totalização. Este servidor consulta o TSE a cada 10 s e a página atualiza a cada 5 s; o resto do atraso é do TSE. Confira o horário da última totalização acima.</p>
+    <p>Fonte: <a href="https://resultados.tse.jus.br" rel="noopener">TSE · resultados.tse.jus.br</a>. Percentuais sobre votos válidos, calculados pelo TSE. Só a divulgação oficial do TSE tem valor legal.</p>
+  </footer>
+</div>
+<div class="dica" id="dica" role="tooltip" hidden></div>
+<noscript><p style="padding:16px">Esta página precisa de JavaScript.</p></noscript>
+
+<script>
+const CARGOS = {
+  presidente: "Presidente",
+  governador: "Governador",
+  senador: "Senador",
+  "deputado-federal": "Deputado federal",
+  "deputado-estadual": "Deputado estadual",
+  "deputado-distrital": "Deputado distrital",
+};
+const UFS = {
+  ac: "Acre", al: "Alagoas", am: "Amazonas", ap: "Amapá", ba: "Bahia", ce: "Ceará", df: "Distrito Federal",
+  es: "Espírito Santo", go: "Goiás", ma: "Maranhão", mg: "Minas Gerais", ms: "Mato Grosso do Sul",
+  mt: "Mato Grosso", pa: "Pará", pb: "Paraíba", pe: "Pernambuco", pi: "Piauí", pr: "Paraná",
+  rj: "Rio de Janeiro", rn: "Rio Grande do Norte", ro: "Rondônia", rr: "Roraima", rs: "Rio Grande do Sul",
+  sc: "Santa Catarina", se: "Sergipe", sp: "São Paulo", to: "Tocantins",
+};
+const ATUALIZAR_A_CADA = 5000;
+const TOP_INICIAL = 15, TOP_PASSO = 30, TOP_MAXIMO = 100;
+
+const $ = (id) => document.getElementById(id);
+const inteiro = (n) => n.toLocaleString("pt-BR");
+const pct = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
+
+const params = new URLSearchParams(location.search);
+const estado = {
+  cargo: params.get("cargo") in CARGOS ? params.get("cargo") : "presidente",
+  uf: (params.get("uf") || "").toLowerCase(),
+  turno: params.get("turno") === "2" ? "2" : "1",
+  ambiente: params.get("ambiente") === "simulado" ? "simulado" : "oficial",
+  top: TOP_INICIAL,
+};
+
+let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0;
+
+function ufsDoCargo(cargo) {
+  const todas = Object.keys(UFS);
+  if (cargo === "presidente") return ["br", ...todas];
+  if (cargo === "deputado-distrital") return ["df"];
+  if (cargo === "deputado-estadual") return todas.filter((uf) => uf !== "df");
+  return todas;
+}
+
+function preencher(select, opcoes, valor) {
+  select.replaceChildren(...opcoes.map(([v, texto]) => new Option(texto, v)));
+  select.value = valor;
+}
+
+function sincronizarFiltros() {
+  const ufs = ufsDoCargo(estado.cargo);
+  if (!ufs.includes(estado.uf)) estado.uf = estado.cargo === "presidente" ? "br" : ufs.includes("sp") ? "sp" : ufs[0];
+  preencher($("cargo"), Object.entries(CARGOS), estado.cargo);
+  preencher($("uf"), ufs.map((uf) => [uf, uf === "br" ? "Brasil" : UFS[uf]]), estado.uf);
+  const temSegundoTurno = estado.cargo === "presidente" || estado.cargo === "governador";
+  if (!temSegundoTurno) estado.turno = "1";
+  $("turno").options[1].disabled = !temSegundoTurno;
+  $("turno").value = estado.turno;
+  $("ambiente").value = estado.ambiente;
+  const q = new URLSearchParams({ cargo: estado.cargo, uf: estado.uf, turno: estado.turno, ambiente: estado.ambiente });
+  history.replaceState(null, "", "?" + q);
+}
+
+function titulo() {
+  const lugar = estado.uf === "br" ? "Brasil" : UFS[estado.uf];
+  return `${CARGOS[estado.cargo]} · ${lugar} · ${estado.turno}º turno`;
+}
+
+function mostrarSelos(d) {
+  const selos = [];
+  selos.push([d.final ? "Apuração final" : "Apuração parcial", ""]);
+  if (d.ambiente === "simulado") selos.push(["Dados simulados do TSE (teste)", "atencao"]);
+  $("selos").replaceChildren(...selos.map(([texto, classe]) => {
+    const el = document.createElement("span");
+    el.className = "selo " + classe;
+    el.textContent = texto;
+    return el;
+  }));
+}
+
+function indicador(rotulo, valor, detalhe) {
+  const el = document.createElement("div");
+  el.className = "cartao indicador";
+  for (const [classe, texto] of [["rotulo", rotulo], ["valor", valor], ["detalhe", detalhe]]) {
+    const filho = document.createElement("div");
+    filho.className = classe;
+    filho.textContent = texto;
+    el.append(filho);
+  }
+  return el;
+}
+
+function linha(c, lider) {
+  const li = document.createElement("li");
+  li.className = "linha";
+  li.tabIndex = 0;
+  const largura = lider > 0 ? (c.votos / lider) * 100 : 0;
+
+  const pos = document.createElement("span");
+  pos.className = "pos";
+  pos.textContent = c.posicao;
+
+  const quem = document.createElement("div");
+  quem.className = "quem";
+  const nome = document.createElement("div");
+  nome.className = "nome";
+  nome.textContent = c.nome;
+  const meta = document.createElement("div");
+  meta.className = "meta";
+  meta.append(`Nº ${c.numero} · ${c.partido}`);
+  if (c.situacao) {
+    meta.append(" · ");
+    const sit = document.createElement("span");
+    if (c.eleito) sit.className = "eleito";
+    sit.textContent = (c.eleito ? "✓ " : "") + c.situacao;
+    meta.append(sit);
+  }
+  quem.append(nome, meta);
+
+  const trilho = document.createElement("div");
+  trilho.className = "trilho";
+  trilho.setAttribute("aria-hidden", "true");
+  const barra = document.createElement("div");
+  barra.className = "barra";
+  barra.style.width = largura + "%";
+  trilho.append(barra);
+
+  const votos = document.createElement("span");
+  votos.className = "num votos";
+  votos.textContent = inteiro(c.votos);
+  const pc = document.createElement("span");
+  pc.className = "num pct";
+  pc.textContent = pct(c.percentual);
+
+  li.append(pos, quem, trilho, votos, pc);
+  ligarDica(li, c);
+  return li;
+}
+
+function renderizar(d) {
+  mostrarSelos(d);
+  $("subtitulo").textContent = titulo();
+
+  $("heroi-valor").textContent = pct(d.secoes.percentual);
+  $("medidor-barra").style.width = d.secoes.percentual + "%";
+  $("medidor").setAttribute("aria-valuenow", d.secoes.percentual);
+  $("heroi-detalhe").textContent = `${inteiro(d.secoes.apuradas)} de ${inteiro(d.secoes.total)} seções`;
+
+  $("indicadores").replaceChildren(
+    indicador("Total de votos", inteiro(d.votos.total), `${inteiro(d.eleitores.aptos)} eleitores aptos`),
+    indicador("Comparecimento", inteiro(d.eleitores.comparecimento), pct(d.eleitores.pct_comparecimento)),
+    indicador("Abstenção", inteiro(d.eleitores.abstencao), pct(d.eleitores.pct_abstencao)),
+    indicador("Votos brancos", inteiro(d.votos.brancos), pct(d.votos.pct_brancos)),
+    indicador("Votos nulos", inteiro(d.votos.nulos), pct(d.votos.pct_nulos)),
+  );
+
+  const lider = d.candidatos.length ? d.candidatos[0].votos : 0;
+  $("ranking").replaceChildren(...d.candidatos.map((c) => linha(c, lider)));
+  const parcial = d.candidatos.length < d.total_candidatos;
+  $("lista-info").textContent = (d.votos.total === 0 ? "Apuração ainda não começou · " : "") +
+    (parcial ? `mostrando ${d.candidatos.length} de ${inteiro(d.total_candidatos)}` : `${inteiro(d.total_candidatos)} candidatos`);
+  $("mais").hidden = !parcial || estado.top >= TOP_MAXIMO;
+
+  mostrarAviso(d.aviso || "");
+  ultimo = d;
+  recebidoEm = Date.now();
+  atualizarTempo();
+}
+
+function mostrarAviso(texto) {
+  $("aviso").hidden = !texto;
+  $("aviso").textContent = texto;
+}
+
+function atualizarTempo() {
+  if (!ultimo) return;
+  const idade = ultimo.idade_s + Math.round((Date.now() - recebidoEm) / 1000);
+  const totalizacao = ultimo.ultima_totalizacao ? `Última totalização: ${ultimo.ultima_totalizacao} (Brasília)` : "Totalização ainda não iniciada";
+  $("rodape-tempo").textContent = `${totalizacao} · TSE consultado há ${idade}s · esta página atualiza sozinha.`;
+}
+
+async function carregar() {
+  clearTimeout(temporizador);
+  const minha = ++sequencia;
+  $("painel").classList.add("carregando");
+  try {
+    const q = new URLSearchParams({ cargo: estado.cargo, uf: estado.uf, turno: estado.turno, ambiente: estado.ambiente, top: estado.top });
+    const resposta = await fetch("/api/resultado?" + q, { cache: "no-store" });
+    const corpo = await resposta.json();
+    if (minha !== sequencia) return;
+    if (resposta.ok) renderizar(corpo);
+    else falhar(corpo.erro);
+  } catch {
+    if (minha === sequencia) falhar("Sem conexão com o servidor. Mantendo o último placar.");
+  } finally {
+    if (minha === sequencia) {
+      $("painel").classList.remove("carregando");
+      if (!document.hidden) temporizador = setTimeout(carregar, ATUALIZAR_A_CADA);
+    }
+  }
+}
+
+function falhar(mensagem) {
+  mostrarAviso(mensagem);
+  if (!ultimo) {
+    $("subtitulo").textContent = titulo();
+    $("selos").replaceChildren();
+    $("heroi-valor").textContent = "—";
+    $("medidor-barra").style.width = "0";
+    $("heroi-detalhe").textContent = "";
+    $("indicadores").replaceChildren();
+    const vazio = document.createElement("li");
+    vazio.className = "vazio";
+    vazio.textContent = "Sem resultado para exibir.";
+    $("ranking").replaceChildren(vazio);
+    $("lista-info").textContent = "";
+    $("mais").hidden = true;
+  }
+}
+
+function trocou(campo, valor) {
+  estado[campo] = valor;
+  estado.top = TOP_INICIAL;
+  ultimo = null;
+  sincronizarFiltros();
+  carregar();
+}
+
+/* Tooltip: reforça a linha, nunca é a única forma de ler um valor. */
+const dica = $("dica");
+function ligarDica(el, c) {
+  const mostrar = (x, y) => {
+    dica.replaceChildren();
+    const forte = document.createElement("strong");
+    forte.textContent = `${inteiro(c.votos)} votos · ${pct(c.percentual)}`;
+    const resto = document.createElement("span");
+    resto.textContent = `${c.nome} · Nº ${c.numero} · ${c.partido}${c.situacao ? " · " + c.situacao : ""}`;
+    dica.append(forte, resto);
+    dica.hidden = false;
+    const caixa = dica.getBoundingClientRect();
+    dica.style.left = Math.max(8, Math.min(x + 14, innerWidth - caixa.width - 8)) + "px";
+    dica.style.top = Math.max(8, Math.min(y + 14, innerHeight - caixa.height - 8)) + "px";
+  };
+  const esconder = () => { dica.hidden = true; el.classList.remove("foco"); };
+  el.addEventListener("pointermove", (e) => mostrar(e.clientX, e.clientY));
+  el.addEventListener("pointerleave", esconder);
+  el.addEventListener("focus", () => {
+    el.classList.add("foco");
+    const r = el.getBoundingClientRect();
+    mostrar(r.left + r.width / 2, r.bottom - 8);
+  });
+  el.addEventListener("blur", esconder);
+}
+
+$("cargo").addEventListener("change", (e) => trocou("cargo", e.target.value));
+$("uf").addEventListener("change", (e) => trocou("uf", e.target.value));
+$("turno").addEventListener("change", (e) => trocou("turno", e.target.value));
+$("ambiente").addEventListener("change", (e) => trocou("ambiente", e.target.value));
+$("mais").addEventListener("click", () => {
+  estado.top = Math.min(estado.top + TOP_PASSO, TOP_MAXIMO);
+  carregar();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTimeout(temporizador);
+  else carregar();
+});
+setInterval(atualizarTempo, 1000);
+
+sincronizarFiltros();
+carregar();
+</script>
+</body>
+</html>

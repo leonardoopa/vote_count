@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.env
+.env.example
+.editorconfig
+.gitignore
+__pycache__
+*.pyc
+test_*.py
+docs
+Makefile
+README.md
+compose.yaml

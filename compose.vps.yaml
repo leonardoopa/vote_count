@@ -1,0 +1,19 @@
+# Override para a VPS que já roda o amazon_pay.
+#
+# O Caddy dele (container `comunidade_caddy`) ocupa 80/443 e termina o HTTPS.
+# Para repassar o tráfego por nome (`contador:8000`), o contador entra na rede
+# do amazon_pay em vez de ficar só na rede deste projeto.
+#
+# Uso, em ~/contador:
+#   docker compose -f compose.yaml -f compose.vps.yaml up -d --build
+#
+# A rede `amazon_pay_default` é do outro projeto e precisa existir: suba o
+# amazon_pay antes. Sem ela este compose falha, e o amazon_pay não é afetado.
+services:
+  contador:
+    networks: [amazon_pay]
+
+networks:
+  amazon_pay:
+    name: amazon_pay_default
+    external: true

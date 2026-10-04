@@ -9,6 +9,7 @@ Exemplos:
     python3 contador.py                              # presidente, Brasil
     python3 contador.py -c governador --uf sp        # governador de SP
     python3 contador.py -c senador --uf mg --top 5
+    python3 contador.py -c governador --uf sp --cidade campinas   # só uma cidade
     python3 contador.py --ambiente simulado          # dados de teste do TSE
 """
 import argparse
@@ -16,6 +17,7 @@ import gzip
 import json
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.request
 from collections import namedtuple
@@ -64,12 +66,65 @@ def uf_valida(cargo, uf):
     return uf in UFS
 
 
-def montar_url(ambiente, cargo, uf, turno, eleicao=None):
-    codigo_cargo, tipo = CARGOS[cargo]
-    config = AMBIENTES[ambiente]
-    codigo_eleicao = eleicao or config["eleicoes"][tipo][turno - 1]
-    arquivo = f"{uf}-c{codigo_cargo:04d}-e{codigo_eleicao:06d}-u.json"
-    return f"{config['base']}/{codigo_eleicao}/dados/{uf}/{arquivo}"
+def codigo_eleicao(ambiente, cargo, turno, eleicao=None):
+    tipo = CARGOS[cargo][1]
+    return eleicao or AMBIENTES[ambiente]["eleicoes"][tipo][turno - 1]
+
+
+def montar_url(ambiente, cargo, uf, turno, eleicao=None, municipio=None):
+    """URL do resultado: da UF/Brasil ou, com `municipio` (código TSE de 5 dígitos), da cidade."""
+    codigo_cargo = CARGOS[cargo][0]
+    codigo = codigo_eleicao(ambiente, cargo, turno, eleicao)
+    arquivo = f"{uf}{municipio or ''}-c{codigo_cargo:04d}-e{codigo:06d}-u.json"
+    return f"{AMBIENTES[ambiente]['base']}/{codigo}/dados/{uf}/{arquivo}"
+
+
+def url_municipios(ambiente, cargo, turno, eleicao=None):
+    """Lista de municípios (por UF) da eleição: a mesma para todos os cargos dela."""
+    codigo = codigo_eleicao(ambiente, cargo, turno, eleicao)
+    return f"{AMBIENTES[ambiente]['base']}/{codigo}/config/mun-e{codigo:06d}-cm.json"
+
+
+_MINUSCULAS = {"de", "da", "do", "das", "dos", "e", "del"}
+
+
+def nome_proprio(nome):
+    """'SÃO JOÃO DEL REI' -> 'São João del Rei' (o TSE manda tudo em maiúsculas)."""
+    palavras = nome.lower().split()
+    return " ".join(
+        p if (i and p in _MINUSCULAS) else p.title() for i, p in enumerate(palavras)
+    )
+
+
+def sem_acento(texto):
+    base = unicodedata.normalize("NFD", texto)
+    return "".join(c for c in base if not unicodedata.combining(c)).casefold().strip()
+
+
+def municipios(config, uf):
+    """Cidades da UF no arquivo de configuração do TSE, em ordem alfabética."""
+    for abrangencia in config.get("abr", []):
+        if abrangencia.get("cd") == uf:
+            lista = [
+                {"codigo": m["cd"], "nome": nome_proprio(m["nm"]), "capital": m.get("c") == "s"}
+                for m in abrangencia.get("mu", [])
+            ]
+            return sorted(lista, key=lambda m: sem_acento(m["nome"]))
+    return []
+
+
+def achar_municipio(lista, termo):
+    """Cidade pelo nome, sem diferenciar acento nem caixa. Devolve (cidade, parecidas).
+
+    Nome exato vence; senão vale um único nome que contenha o termo. Com mais de um,
+    devolve `cidade=None` e as candidatas em `parecidas`.
+    """
+    alvo = sem_acento(termo)
+    exatas = [m for m in lista if sem_acento(m["nome"]) == alvo]
+    if exatas:
+        return exatas[0], []
+    parecidas = [m for m in lista if alvo and alvo in sem_acento(m["nome"])]
+    return (parecidas[0], []) if len(parecidas) == 1 else (None, parecidas)
 
 
 def buscar(url, etag=None):
@@ -130,6 +185,7 @@ def renderizar(dados, args, aviso=""):
     final = dados.get("tf") == "s"
     linhas = [
         f"ELEIÇÕES 2026 · {args.turno}º TURNO · {args.cargo.upper()} · {args.uf.upper()}"
+        + (f" · {args.cidade_nome.upper()}" if getattr(args, "cidade_nome", None) else "")
         + ("   [DADOS SIMULADOS DO TSE]" if args.ambiente == "simulado" else ""),
         f"Totalização {'FINAL' if final else 'PARCIAL'}"
         f" · seções apuradas {milhar(secoes['st'])} de {milhar(secoes['ts'])}"
@@ -167,8 +223,32 @@ def mostrar(texto, uma_vez):
     print(texto, flush=True)
 
 
+def resolver_cidade(args):
+    """Troca --cidade por --municipio (e guarda o nome para o título), lendo a lista do TSE."""
+    resposta = buscar(url_municipios(args.ambiente, args.cargo, args.turno, args.eleicao))
+    if resposta.dados is None:
+        sys.exit(f"Não foi possível ler a lista de cidades do TSE (HTTP {resposta.status or 'sem resposta'}).")
+    lista = municipios(resposta.dados, args.uf)
+    if args.cidade:
+        cidade, parecidas = achar_municipio(lista, args.cidade)
+        if cidade is None:
+            sugestoes = ", ".join(m["nome"] for m in parecidas[:10])
+            sys.exit(
+                f"Cidade '{args.cidade}' não encontrada em {args.uf.upper()}."
+                + (f" Parecidas: {sugestoes}." if sugestoes else "")
+            )
+        args.municipio = cidade["codigo"]
+    else:
+        cidade = next((m for m in lista if m["codigo"] == args.municipio), None)
+        if cidade is None:
+            sys.exit(f"Código de município {args.municipio} não existe em {args.uf.upper()}.")
+    args.cidade_nome = cidade["nome"]
+
+
 def executar(args):
-    url = montar_url(args.ambiente, args.cargo, args.uf, args.turno, args.eleicao)
+    if args.cidade or args.municipio:
+        resolver_cidade(args)
+    url = montar_url(args.ambiente, args.cargo, args.uf, args.turno, args.eleicao, args.municipio)
     dados, etag, falhas = None, None, 0
     while True:
         resposta = buscar(url, etag)
@@ -198,6 +278,8 @@ def ler_argumentos(argv=None):
     parser = argparse.ArgumentParser(description="Contador de votos em tempo real (TSE, 2026).")
     parser.add_argument("-c", "--cargo", choices=CARGOS, default="presidente")
     parser.add_argument("--uf", help="sigla da UF; 'br' (padrão) só para presidente")
+    parser.add_argument("--cidade", help="nome da cidade (precisa de --uf); mostra só o resultado dela")
+    parser.add_argument("--municipio", help="código TSE da cidade, 5 dígitos (alternativa a --cidade)")
     parser.add_argument("--turno", type=int, choices=(1, 2), default=1)
     parser.add_argument("--ambiente", choices=AMBIENTES, default="oficial")
     parser.add_argument("--eleicao", type=int, help="código da eleição no TSE (sobrescreve o padrão)")
@@ -210,6 +292,12 @@ def ler_argumentos(argv=None):
         parser.error(f"--uf inválida para {args.cargo}: use uma de {', '.join(UFS)}")
     if args.intervalo < 10:
         parser.error("--intervalo mínimo é 10 segundos (limite de acesso do TSE)")
+    if args.cidade and args.municipio:
+        parser.error("use --cidade ou --municipio, não os dois")
+    if (args.cidade or args.municipio) and args.uf == "br":
+        parser.error("cidade precisa de uma UF: use --uf")
+    if args.municipio and not (args.municipio.isdigit() and len(args.municipio) == 5):
+        parser.error("--municipio deve ter 5 dígitos (código do TSE)")
     return args
 
 

@@ -33,7 +33,7 @@ make up                  # ou: docker compose up -d --build
 
 Abra <http://127.0.0.1:8000>. Para parar: `make down`. Para ver os logs: `make logs`.
 
-A porta é publicada só em `127.0.0.1`. Para abrir na rede local, troque o mapeamento em [compose.yaml](compose.yaml).
+A porta é publicada só em `127.0.0.1`. Para abrir ao público, veja [Colocar numa VPS](#colocar-numa-vps).
 
 ### Sem Docker
 
@@ -41,12 +41,52 @@ A porta é publicada só em `127.0.0.1`. Para abrir na rede local, troque o mape
 make web                 # ou: python3 servidor.py --porta 8000
 ```
 
+### Colocar numa VPS
+
+Precisa de Docker com o plugin Compose (`docker compose version`). Antes de tudo, confira que a VPS consegue ler o TSE, porque o TSE pode bloquear IP de datacenter:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://resultados.tse.jus.br/oficial/comum/config/ele-c.json   # deve dar 200
+```
+
+Do seu computador, mande os arquivos (sem Git):
+
+```bash
+rsync -az --filter=':- .gitignore' --exclude .git --exclude .claude --exclude docs ./ USUARIO@IP:~/contador/
+```
+
+Na VPS:
+
+```bash
+cd ~/contador
+printf 'BIND=0.0.0.0\nPORTA=80\n' > .env
+docker compose up -d --build
+curl -s http://127.0.0.1/saude          # deve responder: ok
+```
+
+Abra `http://IP-DA-VPS`. Se usar o firewall `ufw`, libere a porta e mantenha o SSH: `sudo ufw allow OpenSSH && sudo ufw allow 80/tcp`. Se o provedor tem firewall próprio, libere a porta 80 lá também. É HTTP puro, sem HTTPS: serve para acompanhar dados públicos, mas não digite senhas em nada que você coloque neste endereço.
+
+#### Com HTTPS num subdomínio (VPS que já tem Caddy)
+
+Se a VPS já roda um Caddy nas portas 80/443 (o do `amazon_pay`), não use `PORTA=80`: conflita. Coloque o contador atrás dele, num subdomínio do domínio que você já tem, sem custo de domínio novo.
+
+1. No DNS do domínio, crie um registro `A` do subdomínio (ex.: `votos`) apontando para o IP da VPS. Confira com `dig +short A votos.seudominio.com.br` antes de seguir: o Let's Encrypt valida pelo nome, e tentativa falha conta no limite dele.
+2. No `.env` do `amazon_pay` na VPS, acrescente `VOTOS_ADDRESS=votos.seudominio.com.br`. O `Caddyfile` e o `docker-compose.yml` desse projeto já têm o bloco.
+3. Aqui, em `~/contador`, suba com o override que põe o contador na rede do Caddy:
+
+```bash
+docker compose -f compose.yaml -f compose.vps.yaml up -d --build
+```
+
+4. Depois que `https://votos.seudominio.com.br` abrir, feche a porta pública antiga: tire `BIND` e `PORTA` do `.env` daqui (o padrão volta para `127.0.0.1`) e repita o comando acima.
+
 ### No terminal
 
 ```bash
 python3 contador.py                              # presidente, Brasil
 python3 contador.py -c governador --uf sp        # governador de São Paulo
 python3 contador.py -c senador --uf mg --top 5   # senador de Minas, 5 primeiros
+python3 contador.py -c governador --uf sp --cidade campinas   # só a cidade de Campinas
 python3 contador.py --turno 2                    # segundo turno (25/10)
 python3 contador.py --ambiente simulado          # dados de teste do TSE
 ```
@@ -55,6 +95,8 @@ python3 contador.py --ambiente simulado          # dados de teste do TSE
 |---|---|---|
 | `-c`, `--cargo` | `presidente`, `governador`, `senador`, `deputado-federal`, `deputado-estadual`, `deputado-distrital` | `presidente` |
 | `--uf` | sigla da UF; `br` só vale para presidente | `br` (presidente) |
+| `--cidade` | nome da cidade (sem diferenciar acento nem caixa); precisa de `--uf` | todo o território |
+| `--municipio` | código TSE da cidade (5 dígitos), alternativa a `--cidade` | todo o território |
 | `--turno` | `1` ou `2` (só presidente e governador têm 2º turno) | `1` |
 | `--ambiente` | `oficial` ou `simulado` (dados de teste do TSE) | `oficial` |
 | `--top` | quantos candidatos mostrar | `15` |
@@ -86,7 +128,7 @@ O atraso que o contador soma é de até uns 15 segundos. O resto depende de quan
 
 ## API
 
-`GET /api/resultado` devolve JSON.
+`GET /api/resultado` devolve JSON. `GET /api/municipios` lista as cidades de uma UF, para montar um seletor.
 
 | Parâmetro | Valores | Padrão |
 |---|---|---|
@@ -94,7 +136,10 @@ O atraso que o contador soma é de até uns 15 segundos. O resto depende de quan
 | `uf` | sigla da UF, ou `br` para presidente | `br` (presidente) |
 | `turno` | `1` ou `2` | `1` |
 | `ambiente` | `oficial` ou `simulado` | `oficial` |
+| `municipio` | código TSE da cidade (5 dígitos); só vale com `uf` diferente de `br` e só se o TSE listar a cidade nessa UF | UF inteira |
 | `top` | de 1 a 100 candidatos | `15` |
+
+`/api/municipios` aceita `cargo`, `uf`, `turno` e `ambiente` (a `uf` é obrigatória e não pode ser `br`) e devolve `{"uf": "sp", "municipios": [{"codigo": "62910", "nome": "Campinas", "capital": false}, ...]}`, em ordem alfabética. O servidor guarda a lista por 6 horas.
 
 ```json
 {
@@ -108,11 +153,12 @@ O atraso que o contador soma é de até uns 15 segundos. O resto depende de quan
     { "posicao": 1, "numero": "13", "nome": "NOME", "partido": "PT", "votos": 12000000, "percentual": 41.2, "eleito": false, "situacao": "" }
   ],
   "ambiente": "oficial",
+  "municipio": null,
   "idade_s": 4
 }
 ```
 
-Os números acima são só de exemplo e o JSON foi resumido (a resposta real traz também abstenção, horário de geração do arquivo e outros campos). Códigos de resposta: `200` com dados, `400` seleção inválida, `404` o TSE ainda não publicou, `503` o TSE não respondeu. Se o TSE falhar mas houver um placar antigo, ele é devolvido com o campo `aviso`. `GET /saude` responde `ok` (usado pelo healthcheck do Docker).
+`municipio` vem `null` para a UF inteira, ou `{"codigo": "62910", "nome": "Campinas"}` quando a consulta é de uma cidade. Os números acima são só de exemplo e o JSON foi resumido (a resposta real traz também abstenção, horário de geração do arquivo e outros campos). Códigos de resposta: `200` com dados, `400` seleção inválida, `404` o TSE ainda não publicou, `503` o TSE não respondeu. Se o TSE falhar mas houver um placar antigo, ele é devolvido com o campo `aviso`. `GET /saude` responde `ok` (usado pelo healthcheck do Docker).
 
 ## Regras de acesso do TSE
 
@@ -121,7 +167,8 @@ O TSE limita o acesso a 100 requisições por segundo por IP e bloqueia o IP por
 - a consulta é no mínimo a cada 10 segundos e usa `If-None-Match` (ETag);
 - o terminal encerra no primeiro 404, em vez de repetir (cargo, UF ou turno errado);
 - o servidor web guarda o 404 por 60 segundos e, se passar de 10 em um minuto, para de tentar URLs novas por um tempo;
-- o servidor só monta URLs a partir de valores conhecidos (cargo, UF, turno e ambiente validados), então nada que o visitante digita vai parar na URL do TSE;
+- o servidor só monta URLs a partir de valores conhecidos (cargo, UF, turno, ambiente e cidade validados contra a lista do TSE), então nada que o visitante digita vai parar na URL do TSE;
+- cada cidade é uma consulta a mais, então o servidor faz no máximo 20 consultas por segundo ao TSE (sobra com folga do limite de 100) e guarda no máximo 400 seleções em memória, descartando as menos usadas;
 - ao receber 403 ou 429, espera 10 minutos e continua mostrando o último placar.
 
 ## Estrutura

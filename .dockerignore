@@ -7,6 +7,8 @@
 .gitignore
 __pycache__
 *.pyc
+venv
+.venv
 test_*.py
 docs
 Makefile

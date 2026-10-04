@@ -60,13 +60,15 @@ h2 { margin: 0; font-size: 1rem; font-weight: 600; }
 .selo.atencao { color: var(--ink); border-color: var(--ink-2); }
 
 .filtros { display: flex; flex-wrap: wrap; gap: 12px 16px; margin: 20px 0 16px; }
+.filtros label[hidden] { display: none; }
+.filtros label.cidade { flex-basis: 14rem; max-width: 20rem; }
 .filtros label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 9.5rem; max-width: 15rem; font-size: 0.8125rem; color: var(--ink-2); }
-.filtros select {
+.filtros select, .filtros input {
   width: 100%; padding: 8px 10px; border-radius: 8px;
   border: 1px solid var(--border); background: var(--surface); color: var(--ink);
   font: inherit;
 }
-select:focus-visible, button:focus-visible, .linha:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
 
 .aviso { margin: 0 0 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--ink-2); background: var(--surface); font-size: 0.9375rem; }
 .aviso[hidden] { display: none; }
@@ -156,6 +158,10 @@ select:focus-visible, button:focus-visible, .linha:focus-visible { outline: 2px 
   <form class="filtros" id="filtros" onsubmit="return false">
     <label>Cargo <select id="cargo"></select></label>
     <label>Território <select id="uf"></select></label>
+    <label class="cidade" id="rotulo-cidade" hidden>Cidade
+      <input id="cidade" type="search" list="cidades" placeholder="Todo o estado — digite para buscar" autocomplete="off" autocapitalize="words" spellcheck="false">
+      <datalist id="cidades"></datalist>
+    </label>
     <label>Turno
       <select id="turno"><option value="1">1º turno (04/10)</option><option value="2">2º turno (25/10)</option></select>
     </label>
@@ -219,12 +225,15 @@ const params = new URLSearchParams(location.search);
 const estado = {
   cargo: params.get("cargo") in CARGOS ? params.get("cargo") : "presidente",
   uf: (params.get("uf") || "").toLowerCase(),
+  municipio: /^\d{5}$/.test(params.get("municipio") || "") ? params.get("municipio") : "",
   turno: params.get("turno") === "2" ? "2" : "1",
   ambiente: params.get("ambiente") === "simulado" ? "simulado" : "oficial",
   top: TOP_INICIAL,
 };
 
 let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0;
+let cidades = [];            // cidades da UF escolhida: [{codigo, nome, capital}]
+let sequenciaCidades = 0;
 
 function ufsDoCargo(cargo) {
   const todas = Object.keys(UFS);
@@ -249,12 +258,60 @@ function sincronizarFiltros() {
   $("turno").options[1].disabled = !temSegundoTurno;
   $("turno").value = estado.turno;
   $("ambiente").value = estado.ambiente;
+  $("rotulo-cidade").hidden = estado.uf === "br";
   const q = new URLSearchParams({ cargo: estado.cargo, uf: estado.uf, turno: estado.turno, ambiente: estado.ambiente });
+  if (estado.municipio) q.set("municipio", estado.municipio);
   history.replaceState(null, "", "?" + q);
 }
 
+const semAcento = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+const cidadeAtual = () => cidades.find((c) => c.codigo === estado.municipio) || null;
+
+/* Lista as cidades da UF (o servidor guarda por 6 h). Falhou? Segue só com a UF inteira. */
+async function carregarCidades() {
+  const minha = ++sequenciaCidades;
+  cidades = [];
+  $("cidades").replaceChildren();
+  if (estado.uf === "br") { estado.municipio = ""; $("cidade").value = ""; return; }
+  try {
+    const q = new URLSearchParams({ cargo: estado.cargo, uf: estado.uf, turno: estado.turno, ambiente: estado.ambiente });
+    const resposta = await fetch("/api/municipios?" + q, { cache: "no-store" });
+    const corpo = await resposta.json();
+    if (minha !== sequenciaCidades) return;
+    if (resposta.ok) cidades = corpo.municipios;
+  } catch { /* sem lista, sem seletor: o placar da UF continua funcionando */ }
+  if (minha !== sequenciaCidades) return;
+  $("cidades").replaceChildren(...cidades.map((c) => new Option(c.nome)));
+  if (estado.municipio && !cidadeAtual()) estado.municipio = "";
+  $("cidade").value = cidadeAtual() ? cidadeAtual().nome : "";
+  sincronizarFiltros();
+  $("subtitulo").textContent = titulo();
+}
+
+/* Se a lista derrubou a cidade (não existe nesta UF/ambiente), refaz a consulta sem ela. */
+async function atualizarCidades() {
+  const antes = estado.municipio;
+  await carregarCidades();
+  if (estado.municipio !== antes) { ultimo = null; carregar(); }
+}
+
+function escolherCidade() {
+  const texto = $("cidade").value;
+  const alvo = semAcento(texto);
+  const achada = alvo ? cidades.find((c) => semAcento(c.nome) === alvo) : null;
+  if (!achada && alvo) return;  // ainda digitando: não consulta nada
+  const codigo = achada ? achada.codigo : "";
+  if (codigo === estado.municipio) return;
+  estado.municipio = codigo;
+  estado.top = TOP_INICIAL;
+  ultimo = null;
+  sincronizarFiltros();
+  carregar();
+}
+
 function titulo() {
-  const lugar = estado.uf === "br" ? "Brasil" : UFS[estado.uf];
+  const cidade = cidadeAtual();
+  const lugar = estado.uf === "br" ? "Brasil" : cidade ? `${cidade.nome} (${estado.uf.toUpperCase()})` : UFS[estado.uf];
   return `${CARGOS[estado.cargo]} · ${lugar} · ${estado.turno}º turno`;
 }
 
@@ -377,6 +434,7 @@ async function carregar() {
   $("painel").classList.add("carregando");
   try {
     const q = new URLSearchParams({ cargo: estado.cargo, uf: estado.uf, turno: estado.turno, ambiente: estado.ambiente, top: estado.top });
+    if (estado.municipio) q.set("municipio", estado.municipio);
     const resposta = await fetch("/api/resultado?" + q, { cache: "no-store" });
     const corpo = await resposta.json();
     if (minha !== sequencia) return;
@@ -411,11 +469,19 @@ function falhar(mensagem) {
 }
 
 function trocou(campo, valor) {
+  const ufAntes = estado.uf;
   estado[campo] = valor;
   estado.top = TOP_INICIAL;
   ultimo = null;
   sincronizarFiltros();
+  // A cidade é de uma UF e de um ambiente: trocar qualquer um deles (inclusive via cargo) a descarta.
+  if (campo === "ambiente" || estado.uf !== ufAntes) {
+    estado.municipio = "";
+    $("cidade").value = "";
+    sincronizarFiltros();
+  }
   carregar();
+  atualizarCidades();
 }
 
 /* Tooltip: reforça a linha, nunca é a única forma de ler um valor. */
@@ -448,6 +514,8 @@ $("cargo").addEventListener("change", (e) => trocou("cargo", e.target.value));
 $("uf").addEventListener("change", (e) => trocou("uf", e.target.value));
 $("turno").addEventListener("change", (e) => trocou("turno", e.target.value));
 $("ambiente").addEventListener("change", (e) => trocou("ambiente", e.target.value));
+$("cidade").addEventListener("input", escolherCidade);
+$("cidade").addEventListener("change", escolherCidade);
 $("mais").addEventListener("click", () => {
   estado.top = Math.min(estado.top + TOP_PASSO, TOP_MAXIMO);
   carregar();
@@ -460,6 +528,7 @@ setInterval(atualizarTempo, 1000);
 
 sincronizarFiltros();
 carregar();
+atualizarCidades();
 </script>
 </body>
 </html>

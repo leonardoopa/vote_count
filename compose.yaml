@@ -2,8 +2,9 @@ services:
   contador:
     build: .
     ports:
-      # só esta máquina acessa; troque por "${PORTA:-8000}:8000" para abrir na rede
-      - "127.0.0.1:${PORTA:-8000}:8000"
+      # BIND=127.0.0.1 (padrão): só esta máquina acessa.
+      # Na VPS, use BIND=0.0.0.0 no .env para abrir ao público.
+      - "${BIND:-127.0.0.1}:${PORTA:-8000}:8000"
     restart: unless-stopped
     read_only: true
     cap_drop: [ALL]

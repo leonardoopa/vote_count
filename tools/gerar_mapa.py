@@ -3,17 +3,23 @@
 
     python3 tools/gerar_mapa.py > mapa-ufs.js          # baixa a malha do IBGE
     python3 tools/gerar_mapa.py malha.geojson          # ou usa um arquivo já baixado
+    python3 tools/gerar_mapa.py --municipios geo       # um arquivo por UF, com os municípios, na pasta geo/
 
-Saída: um objeto JavaScript `{uf: {d: caminho SVG, c: [x, y], l: largura}}` pronto para colar em
-index.html (constante MAPA_UFS), mais a linha com o tamanho do desenho. Só biblioteca padrão.
-Roda uma vez por eleição; o servidor nunca acessa o IBGE.
+Saída do primeiro modo: um objeto JavaScript `{uf: {d: caminho SVG, c: [x, y], l: largura}}` pronto para
+colar em index.html (constante MAPA_UFS), mais a linha com o tamanho do desenho. O modo `--municipios`
+grava `geo/<uf>.json` com `{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}}`, que o
+servidor entrega em /geo/<uf>.json para o mapa por município. Só biblioteca padrão. Roda uma vez por
+eleição; o servidor nunca acessa o IBGE.
 """
+import gzip
 import json
 import math
+import os
 import sys
 import urllib.request
 
 URL = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=UF"
+URL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{codigo}?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=municipio"
 SIGLAS = {
     "11": "ro", "12": "ac", "13": "am", "14": "rr", "15": "pa", "16": "ap", "17": "to", "21": "ma", "22": "pi",
     "23": "ce", "24": "rn", "25": "pb", "26": "pe", "27": "al", "28": "se", "29": "ba", "31": "mg", "32": "es",
@@ -22,6 +28,7 @@ SIGLAS = {
 LARGURA = 1000     # unidades do desenho na horizontal
 TOLERANCIA = 1.0   # simplificação (unidades do desenho); quanto maior, menor o arquivo
 AREA_MINIMA = 12   # ilhas menores que isso (unidades²) somem
+TOLERANCIA_MUNICIPIOS = 0.7  # os municípios são pequenos: simplifica menos
 
 
 def aneis(geometria):
@@ -82,35 +89,72 @@ def caminho(anel):
     return partes[0] + " ".join(deltas).replace(" -", "-") + "z"
 
 
-def main():
-    if len(sys.argv) > 1:
-        with open(sys.argv[1], encoding="utf-8") as arquivo:
-            dados = json.load(arquivo)
-    else:
-        with urllib.request.urlopen(URL, timeout=60) as resposta:
-            dados = json.load(resposta)
+def converter(dados, chave_de, largura=LARGURA, tolerancia=TOLERANCIA, area_minima=AREA_MINIMA, latitude=None):
+    """(largura, altura, {chave: {"d": caminho, "c": [x, y], "l": largura}}) de uma malha GeoJSON do IBGE.
+
+    `latitude` é a latitude que dá a escala da longitude (padrão: o meio da malha)."""
     lons = [p[0] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
     lats = [p[1] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
-    fator = math.cos(math.radians(-15))  # um grau de longitude vale menos que um de latitude
-    escala = LARGURA / ((max(lons) - min(lons)) * fator)
+    fator = math.cos(math.radians((min(lats) + max(lats)) / 2 if latitude is None else latitude))  # um grau de longitude vale menos que um de latitude
+    escala = largura / ((max(lons) - min(lons)) * fator)
     projetar = lambda lon, lat: ((lon - min(lons)) * fator * escala, (max(lats) - lat) * escala)
-    altura = round((max(lats) - min(lats)) * escala)
     saida = {}
     for feicao in dados["features"]:
-        sigla = SIGLAS[feicao["properties"]["codarea"]]
         d, maior = [], (0, None, None)
         for anel in aneis(feicao["geometry"]):
-            simples = simplificar_anel([projetar(*p) for p in anel], TOLERANCIA)
+            projetado = [projetar(*p) for p in anel]
+            simples = simplificar_anel(projetado, tolerancia)
+            if len(simples) < 3 and area_minima == 0:  # município minúsculo: a simplificação o apagaria, fica como veio
+                simples = projetado[:-1] if projetado[0] == projetado[-1] else projetado
             area, centro = area_e_centro(simples)
-            if len(simples) < 3 or area < AREA_MINIMA:
+            if len(simples) < 3 or area < area_minima:
                 continue
             d.append(caminho(simples))
             if area > maior[0]:
                 xs = [x for x, _ in simples]
                 maior = (area, centro, max(xs) - min(xs))
-        saida[sigla] = {"d": "".join(d), "c": [round(maior[1][0]), round(maior[1][1])], "l": round(maior[2])}
-    print(f"/* Contornos das UFs (malha do IBGE, simplificada por tools/gerar_mapa.py). Desenho {LARGURA}x{altura}. */")
-    print(f"const MAPA_TAMANHO = [{LARGURA}, {altura}];")
+        if d:
+            saida[chave_de(feicao)] = {"d": "".join(d), "c": [round(maior[1][0]), round(maior[1][1])], "l": round(maior[2])}
+    return largura, round((max(lats) - min(lats)) * escala), saida
+
+
+def baixar(url):
+    with urllib.request.urlopen(url, timeout=120) as resposta:
+        corpo = resposta.read()
+    if corpo[:2] == b"\x1f\x8b":  # o IBGE às vezes manda gzip mesmo sem o cliente pedir
+        corpo = gzip.decompress(corpo)
+    return json.loads(corpo)
+
+
+def gerar_municipios(pasta, baixar_malha=baixar):
+    """Um arquivo `<uf>.json` por UF com o desenho dos municípios. Devolve {uf: tamanho do arquivo em bytes}."""
+    os.makedirs(pasta, exist_ok=True)
+    tamanhos = {}
+    for codigo, sigla in sorted(SIGLAS.items(), key=lambda par: par[1]):
+        largura, altura, formas = converter(
+            baixar_malha(URL_MUNICIPIOS.format(codigo=codigo)), lambda f: f["properties"]["codarea"],
+            tolerancia=TOLERANCIA_MUNICIPIOS, area_minima=0)
+        conteudo = json.dumps({"w": largura, "h": altura, "m": {c: f["d"] for c, f in sorted(formas.items())}}, separators=(",", ":"))
+        with open(os.path.join(pasta, f"{sigla}.json"), "w", encoding="utf-8") as arquivo:
+            arquivo.write(conteudo)
+        tamanhos[sigla] = len(conteudo.encode("utf-8"))
+    return tamanhos
+
+
+def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--municipios":
+        pasta = sys.argv[2] if len(sys.argv) > 2 else "geo"
+        tamanhos = gerar_municipios(pasta)
+        print(f"{len(tamanhos)} arquivos em {pasta}/, {sum(tamanhos.values()) / 1024:.0f} KB no total", file=sys.stderr)
+        return
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], encoding="utf-8") as arquivo:
+            dados = json.load(arquivo)
+    else:
+        dados = baixar(URL)
+    largura, altura, saida = converter(dados, lambda f: SIGLAS[f["properties"]["codarea"]], latitude=-15)
+    print(f"/* Contornos das UFs (malha do IBGE, simplificada por tools/gerar_mapa.py). Desenho {largura}x{altura}. */")
+    print(f"const MAPA_TAMANHO = [{largura}, {altura}];")
     print("const MAPA_UFS = {")
     for sigla in sorted(saida):
         print(f"  {sigla}: {json.dumps(saida[sigla], separators=(',', ':'))},")

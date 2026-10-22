@@ -13,12 +13,15 @@ A apuração começa zerada, ganha uma totalização nova a cada `--passo` segun
 em `--duracao` segundos.
 """
 import argparse
+import functools
+import json
 import math
 import random
 import re
 import sys
 import time
 import zlib
+from pathlib import Path
 
 import contador
 import servidor
@@ -55,13 +58,26 @@ SECOES["zz"] = 1500 + semente("secoes", "zz") % 2500  # exterior: só presidente
 
 
 def codigo_cidade(uf, indice):
-    return f"{10000 + 100 * contador.UFS.index(uf) + indice}"
+    return f"{10000 + 1000 * contador.UFS.index(uf) + indice}"
+
+
+@functools.lru_cache(maxsize=None)
+def cidades_da_uf(uf):
+    """[(código TSE, código IBGE, nome)]: uma cidade por município do desenho da UF (geo/<uf>.json), para o mapa
+    por município funcionar na demonstração; sem o arquivo, as 5 cidades inventadas."""
+    arquivo = Path(__file__).with_name("geo") / f"{uf}.json"
+    if arquivo.is_file():
+        ibge = sorted(json.loads(arquivo.read_text(encoding="utf-8"))["m"])
+        nomes = [f"{CIDADES[i % len(CIDADES)]} {i // len(CIDADES) + 1}" for i in range(len(ibge))]
+    else:
+        ibge, nomes = [str(9000000 + 100 * contador.UFS.index(uf) + i) for i in range(len(CIDADES))], CIDADES
+    return tuple((codigo_cidade(uf, i), codigo, nome) for i, (codigo, nome) in enumerate(zip(ibge, nomes)))
 
 
 def lista_de_cidades():
     return {"abr": [
-        {"cd": uf, "mu": [{"cd": codigo_cidade(uf, i), "nm": nome.upper(), "c": "s" if i == 0 else "n"}
-                          for i, nome in enumerate(CIDADES)]}
+        {"cd": uf, "mu": [{"cd": tse, "cdi": ibge, "nm": nome.upper(), "c": "s" if i == 0 else "n"}
+                          for i, (tse, ibge, nome) in enumerate(cidades_da_uf(uf))]}
         for uf in contador.UFS
     ]}
 
@@ -347,7 +363,7 @@ def buscar_falso(url, etag=None):
         return contador.Resposta(404, None, etag)
     if uf not in ("br", "zz", *contador.UFS):
         return contador.Resposta(404, None, etag)
-    if municipio and municipio not in {codigo_cidade(uf, i) for i in range(len(CIDADES))}:
+    if municipio and municipio not in {tse for tse, _, _ in cidades_da_uf(uf)}:
         return contador.Resposta(404, None, etag)
     passo, p = progresso()
     marca = f'"{passo}"'
@@ -366,6 +382,7 @@ def main():
     args = parser.parse_args()
     RELOGIO.update(inicio=time.time(), passo=max(1, args.passo), duracao=max(args.passo, args.duracao))
     contador.buscar = buscar_falso
+    servidor.VARREDOR.por_segundo = max(servidor.VARREDOR.por_segundo, 50)  # sem TSE de verdade, o mapa por município enche logo
     print(f"TSE FALSO: dados inventados. Abra http://{args.host}:{args.porta}/?ambiente=simulado", flush=True)
     sys.argv = ["servidor.py", "--host", args.host, "--porta", str(args.porta)]
     servidor.main()

@@ -11,6 +11,7 @@ de pessoas na página (o TSE bloqueia o IP que passar do limite).
 import argparse
 import json
 import os
+import re
 import signal
 import threading
 import time
@@ -26,6 +27,7 @@ import deputados
 import historico
 import imagem
 import mapa
+import municipios
 import varredura
 
 PAGINA = Path(__file__).with_name("index.html")
@@ -440,6 +442,55 @@ ROTAS_API.update({
 })
 
 
+# ---- mapa por município ----
+
+GEO = Path(__file__).with_name("geo")  # desenhos dos municípios, um arquivo por UF (tools/gerar_mapa.py --municipios)
+ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2})\.json$")
+
+
+def mapa_municipal(consulta):
+    """(status, corpo) com o líder de cada cidade da UF. As cidades são buscadas aos poucos pelo varredor."""
+    try:
+        cargo, uf, ambiente, turno, _ = validar(consulta)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    if cargo not in ("presidente", "governador") or uf == "br":
+        return 400, {"erro": "o mapa por município existe para presidente e governador, dentro de um estado"}
+    if not VARREDOR.ligado:
+        return RECURSO_DESLIGADO
+    lista, falha = cidades_da_uf(ambiente, cargo, turno, uf)
+    if falha:
+        return falha
+    # Só varre se o arquivo da UF existe: no 2º turno de governador, UF sem 2º turno daria 404 em todas as cidades.
+    dados, status, _ = CACHE.obter(contador.montar_url(ambiente, cargo, uf, turno))
+    if dados is None:
+        return erro_do_tse(status, "O TSE ainda não publicou o resultado desta seleção (ou o cargo não é disputado neste estado).")
+    ibge = municipios.ibge_das_cidades(CACHE.espiar(contador.url_municipios(ambiente, cargo, turno)) or {}, uf)
+
+    def fabrica():
+        trabalhos = {c["codigo"]: varredura.Trabalho(c["codigo"], contador.montar_url(ambiente, cargo, uf, turno, municipio=c["codigo"])) for c in lista}
+        return trabalhos, municipios.resumir_cidade, municipios.intervalo
+
+    grupo = VARREDOR.pedir(("cidades", ambiente, cargo, turno, uf), fabrica)
+    corpo = municipios.montar(uf, lista, ibge, VARREDOR.resumos(grupo), VARREDOR.relogio())
+    corpo.update(cargo=cargo, turno=turno, ambiente=ambiente)
+    return 200, corpo
+
+
+def desenho_dos_municipios(caminho):
+    """(status, tipo, corpo, extras) do arquivo geo/<uf>.json, ou None se o caminho não é de um desenho."""
+    achado = ARQUIVO_GEO.match(caminho)
+    if not achado or achado[1] not in contador.UFS:
+        return None
+    arquivo = GEO / f"{achado[1]}.json"
+    if not arquivo.is_file():
+        return 404, "text/plain; charset=utf-8", b"desenho indisponivel", {}
+    return 200, "application/json; charset=utf-8", arquivo.read_bytes(), {"Cache-Control": "public, max-age=86400"}
+
+
+ROTAS_API["/api/mapa-municipal"] = mapa_municipal
+
+
 # ---- busca rápida ----
 
 MAX_BUSCA = 40        # caracteres do termo
@@ -644,6 +695,8 @@ class Handler(BaseHTTPRequestHandler):
             self._enviar(status, tipo, corpo, extras)
         elif url.path == "/saude":
             self._enviar(200, "text/plain; charset=utf-8", b"ok")
+        elif (desenho := desenho_dos_municipios(url.path)) is not None:
+            self._enviar(*desenho)
         else:
             self._enviar(404, "text/plain; charset=utf-8", b"nao encontrado")
 

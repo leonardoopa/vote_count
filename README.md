@@ -211,6 +211,12 @@ Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar
 
 Esses dois precisam de um arquivo de deputados por UF (27 por cargo). Quem busca é o **varredor** (`varredura.py`): uma thread só, no máximo `BUSCAS_EXTRAS_POR_SEGUNDO` buscas por segundo no total (padrão 2, contra o limite de 100 do TSE; `0` desliga os recursos e as rotas dão `503`), só enquanto alguém está olhando (5 min sem ninguém, a thread encerra), com `If-None-Match` (o TSE responde 304 sem corpo) e guardando só um resumo de cada UF. Um `403` ou `429` pausa tudo por 10 minutos e 3 respostas `404` seguidas pausam por 1 minuto. As respostas **enchem aos poucos** (`ufs_com_dados` cresce a cada busca); depois de apurada, cada UF é revista a cada 30 minutos, e antes disso a cada 90 s.
 
+### Mapa por município
+
+`GET /api/mapa-municipal` (presidente e governador, dentro de um estado: `cargo`, `uf`, `turno`, `ambiente`) devolve o líder de cada cidade da UF por código IBGE: `{"uf", "total", "carregadas", "idade_s", "cidades": {"3550308": {"nome", "codigo", "situacao", "lider", "margem", "margem_votos", "apurado", "final"}}}`. O TSE publica **um arquivo por cidade** (645 em SP), então as cidades são buscadas pelo mesmo varredor do hemiciclo, aos poucos (no máximo `BUSCAS_EXTRAS_POR_SEGUNDO`, padrão 2), e `carregadas` cresce a cada rodada; cada cidade é revista a cada 2 min (30 min depois de apurada), o que em SP significa uns 5 min por volta completa. Só começa quando alguém pede (na página, o botão "Carregar o mapa dos municípios"), e só se o arquivo da UF existir (evita 645 respostas 404 no 2º turno de governador em UF decidida no 1º).
+
+O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {código IBGE: caminho SVG}}`, uns 615 KB para as 27 UFs, na pasta `geo/`). A página liga desenho e dados pelo código IBGE (`cdi`) que o TSE já traz no arquivo de cidades. Se o desenho não baixar, a página avisa e tenta de novo. Para refazer os arquivos: `python3 tools/gerar_mapa.py --municipios geo`.
+
 ### Busca rápida
 
 `GET /api/busca?q=campinas` procura cidades de **todas** as UFs pelo nome, sem diferenciar acento nem caixa (aceita `cargo` e `ambiente`; só entram UFs válidas para o cargo). Devolve até 10 em `{"cidades": [{"uf", "codigo", "nome", "capital"}]}`, com quem começa pelo termo primeiro. Termos de menos de 2 letras dão lista vazia e mais de 40 caracteres dão `400`. A lista vem do arquivo de cidades que o servidor já guarda por 6 h: a busca não faz consulta nova ao TSE. Na página, a busca abre com `/` ou `Ctrl`/`⌘`+`K` e também acha cargos, estados e candidatos do placar que está na tela.
@@ -281,8 +287,20 @@ Nosso diferencial: sem login, sem convite e sem e-mail obrigatório; API aberta;
 
 ```
 contador.py        leitura do TSE e placar no terminal
-servidor.py        servidor web: cache compartilhado e API
+servidor.py        servidor web: cache compartilhado, rotas e API
 index.html         página (HTML, CSS e JS num arquivo só)
+historico.py       série do placar, replay e feed de atualizações
+mapa.py            resumo por UF: mapa, regiões, disputas e Senado
+deputados.py       hemiciclo da Câmara e mais votados
+municipios.py      mapa por município
+varredura.py       varredor de segundo plano (poucas buscas por segundo, no total)
+compartilhar.py    meta tags e imagem de prévia do link
+imagem.py          gerador de PNG (cartão de prévia e ícones), só zlib
+anuncio.py         faixa de anúncio no topo
+sw.js              service worker (app instalável)
+geo/               desenho dos municípios, uma UF por arquivo
+tools/             geradores dos desenhos do mapa (IBGE)
+tse_falso.py       TSE de mentira para demonstração e testes
 test_*.py          testes (unittest)
 Dockerfile         imagem da página web
 compose.yaml       sobe a página web com Docker

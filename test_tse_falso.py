@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import contador
@@ -73,7 +75,7 @@ class TseFalso(unittest.TestCase):
     def test_cidades(self):
         config = tse_falso.lista_de_cidades()
         sp = contador.municipios(config, "sp")
-        self.assertEqual(len(sp), len(tse_falso.CIDADES))
+        self.assertEqual(len(sp), len(tse_falso.cidades_da_uf("sp")))
         self.assertEqual(pedir("governador", "sp", 1, 0.5, municipio=sp[0]["codigo"]).status, 200)
         self.assertEqual(pedir("governador", "sp", 1, 0.5, municipio="99999").status, 404)
 
@@ -106,6 +108,17 @@ class TseFalso(unittest.TestCase):
         resumo = servidor.resumir(pedir("deputado-federal", "sp", 1, 1.0).dados, 5)
         self.assertEqual(resumo["secoes"]["percentual"], 100.0)
         self.assertTrue(resumo["candidatos"][0]["eleito"])
+
+    def test_uma_cidade_por_municipio_do_desenho_com_codigo_ibge(self):
+        geo = json.loads(Path("geo/sp.json").read_text(encoding="utf-8"))["m"]
+        cidades = tse_falso.cidades_da_uf("sp")
+        self.assertEqual(sorted(ibge for _, ibge, _ in cidades), sorted(geo))
+        self.assertEqual(len({tse for tse, _, _ in cidades}), len(cidades))      # códigos do TSE não se repetem
+        todos = [tse for uf in contador.UFS for tse, _, _ in tse_falso.cidades_da_uf(uf)]
+        self.assertEqual(len(todos), len(set(todos)))                            # nem entre UFs
+        self.assertTrue(all(len(c) == 5 for c in todos))
+        mu = tse_falso.lista_de_cidades()["abr"][contador.UFS.index("sp")]["mu"]
+        self.assertEqual(mu[0]["cdi"], cidades[0][1])
 
     def test_cargo_sem_suporte_da_404(self):
         self.assertEqual(pedir("deputado-federal", "sp", 1, 0.5, ambiente="oficial").status, 404)

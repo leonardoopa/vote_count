@@ -23,7 +23,7 @@ UFS = {
     "rj": "Rio de Janeiro", "rn": "Rio Grande do Norte", "ro": "Rondônia", "rr": "Roraima", "rs": "Rio Grande do Sul",
     "sc": "Santa Catarina", "se": "Sergipe", "sp": "São Paulo", "to": "Tocantins",
 }
-# Mesma tabela da página (COR_PARTIDO em index.html): a cor segue o partido, nunca a posição na lista.
+# Mesma tabela da página (COR_PARTIDO em web/js/base.js): a cor segue o partido, nunca a posição na lista.
 COR_PARTIDO = {
     "PT": "vermelho", "PL": "azul", "REPUBLICANOS": "laranja", "PSD": "agua",
     "PSB": "amarelo", "PP": "magenta", "MDB": "verde", "UNIAO": "violeta",

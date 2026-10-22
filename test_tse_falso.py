@@ -110,7 +110,7 @@ class TseFalso(unittest.TestCase):
         self.assertTrue(resumo["candidatos"][0]["eleito"])
 
     def test_uma_cidade_por_municipio_do_desenho_com_codigo_ibge(self):
-        geo = json.loads(Path("geo/sp.json").read_text(encoding="utf-8"))["m"]
+        geo = json.loads(Path("web/geo/sp.json").read_text(encoding="utf-8"))["m"]
         cidades = tse_falso.cidades_da_uf("sp")
         self.assertEqual(sorted(ibge for _, ibge, _ in cidades), sorted(geo))
         self.assertEqual(len({tse for tse, _, _ in cidades}), len(cidades))      # códigos do TSE não se repetem

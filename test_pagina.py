@@ -1,4 +1,4 @@
-"""Conferências estáticas da página (index.html) e do gerador de contornos do mapa."""
+"""Conferências estáticas da página (web/index.html, estilo e scripts) e do gerador de contornos do mapa."""
 import io
 import json
 import re
@@ -14,11 +14,15 @@ from unittest import mock
 import contador
 from tools import gerar_mapa
 
-HTML = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+WEB = Path(__file__).with_name("web")
+HTML = (WEB / "index.html").read_text(encoding="utf-8")
+CSS = (WEB / "estilo.css").read_text(encoding="utf-8")
+ARQUIVOS_JS = re.findall(r'<script defer src="/js/([a-z0-9-]+)\.js"></script>', HTML)  # na ordem em que a página carrega
 
 
 def script():
-    return re.search(r"<script>(.*?)</script>", HTML, re.S).group(1)
+    """Os scripts da página juntos, na ordem de carga (compartilham o mesmo escopo global)."""
+    return "\n".join((WEB / "js" / f"{nome}.js").read_text(encoding="utf-8") for nome in ARQUIVOS_JS)
 
 
 def chaves_do_objeto(nome):
@@ -39,11 +43,52 @@ class Pagina(unittest.TestCase):
                 self.assertRegex(d, r"^[Mlz0-9 .\-]+$")
 
     def test_sem_dependencia_externa(self):
-        self.assertNotRegex(HTML, r"<script[^>]+src=")
-        self.assertNotRegex(HTML, r'<link[^>]+rel="stylesheet"')
-        self.assertNotIn("@import", HTML)
-        self.assertNotRegex(HTML, r"url\(\s*['\"]?https?:")
-        self.assertNotRegex(HTML, r"\b(?:src|action)=[\"']https?:")
+        # Scripts e estilo vêm do próprio servidor (pasta web/), nunca de um CDN.
+        self.assertEqual(sorted(re.findall(r'<script[^>]+src="([^"]+)"', HTML)), sorted(f"/js/{nome}.js" for nome in ARQUIVOS_JS))
+        self.assertEqual(re.findall(r'<link[^>]+rel="stylesheet"[^>]*href="([^"]+)"', HTML), ["/estilo.css"])
+        self.assertNotRegex(HTML, r"<script>")
+        self.assertNotRegex(HTML, r"<style")
+        for texto in (HTML, CSS, script()):
+            self.assertNotIn("@import", texto)
+            self.assertNotRegex(texto, r"url\(\s*['\"]?(?:https?:)?//")
+            self.assertNotRegex(texto, r"\b(?:src|action)=[\"'](?:https?:)?//")
+
+    def test_todo_script_da_pasta_esta_na_pagina(self):
+        em_disco = sorted(arquivo.stem for arquivo in (WEB / "js").glob("*.js"))
+        self.assertEqual(em_disco, sorted(ARQUIVOS_JS))
+        self.assertEqual((ARQUIVOS_JS[0], ARQUIVOS_JS[-1]), ("base", "iniciar"))   # base define o que os outros usam; iniciar roda por último
+        self.assertEqual(len(ARQUIVOS_JS), len(set(ARQUIVOS_JS)))
+
+    def test_scripts_carregam_na_ordem_sem_referencia_quebrada(self):
+        """Roda os scripts na ordem da página num DOM de mentira: um nome usado no carregamento antes de existir é ReferenceError."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node não está instalado")
+        programa = r"""
+const vm = require("vm"), fs = require("fs");
+process.on("unhandledRejection", () => {});
+const falso = new Proxy(function () {}, {
+  get: (_, chave) => (chave === Symbol.toPrimitive ? () => "" : chave === "then" ? undefined : falso),
+  apply: () => falso, construct: () => falso, set: () => true,
+});
+const contexto = vm.createContext({
+  document: falso, window: falso, navigator: falso, history: falso, localStorage: falso, sessionStorage: falso, Notification: falso, Option: falso, Image: falso,
+  location: { search: "", protocol: "http:", hostname: "localhost", href: "http://localhost/", origin: "http://localhost", pathname: "/" },
+  fetch: () => new Promise(() => {}), setInterval: () => 0, setTimeout: () => 0, clearTimeout() {}, clearInterval() {},
+  requestAnimationFrame: () => 0, cancelAnimationFrame() {}, matchMedia: () => falso,
+  console: { log() {}, error() {}, warn() {} }, URLSearchParams, URL, Blob, TextEncoder,
+});
+const quebrados = [];
+for (const arquivo of process.argv.slice(1)) {
+  try { vm.runInContext(fs.readFileSync(arquivo, "utf8"), contexto, { filename: arquivo }); }
+  catch (erro) { if (erro && (erro.name === "ReferenceError" || erro.name === "SyntaxError")) quebrados.push(arquivo + ": " + erro.message); }
+}
+process.stdout.write(JSON.stringify(quebrados));
+"""
+        arquivos = [str(WEB / "js" / f"{nome}.js") for nome in ARQUIVOS_JS]
+        resultado = subprocess.run([node, "-e", programa, *arquivos], capture_output=True, text=True)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr[-600:])
+        self.assertEqual(json.loads(resultado.stdout), [])
 
     def test_ids_usados_pelo_script_existem_na_pagina(self):
         ids = set(re.findall(r'\bid="([^"]+)"', HTML))
@@ -67,15 +112,55 @@ class Pagina(unittest.TestCase):
             "2;22;'=CMD|'/c calc'!A1;\"P;L\";900;31,8;\"Eleito \"\"com aspas\"\"\"\r\n"
         ))
 
+    def test_service_worker_so_responde_pela_pagina_e_pelos_arquivos_dela(self):
+        """O service worker de verdade num ambiente de mentira: /api, /geo e outras origens passam direto, sem cache."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node não está instalado")
+        programa = r"""
+const vm = require("vm"), fs = require("fs");
+const ouvintes = {}, guardados = [];
+const contexto = vm.createContext({
+  self: { addEventListener: (nome, f) => { ouvintes[nome] = f; }, skipWaiting() {}, clients: { claim() {} } },
+  location: { origin: "http://x" }, URL, Response: class {},
+  caches: { open: async () => ({ put: (chave) => guardados.push(chave) }), match: async () => undefined, keys: async () => [], delete: async () => true },
+  fetch: () => Promise.resolve({ ok: true, clone: () => ({}) }),
+});
+vm.runInContext(fs.readFileSync(process.argv[1], "utf8"), contexto);
+const casos = JSON.parse(process.argv[2]);
+(async () => {
+  const respondeu = [];
+  for (const [metodo, modo, url] of casos) {
+    let sim = false;
+    ouvintes.fetch({ request: { method: metodo, mode: modo, url }, respondWith: (p) => { sim = true; p.catch(() => {}); } });
+    respondeu.push(sim);
+  }
+  await new Promise((r) => setTimeout(r, 20));
+  process.stdout.write(JSON.stringify({ respondeu, guardados }));
+})();
+"""
+        casos = [
+            ("GET", "navigate", "http://x/", True), ("GET", "navigate", "http://x/?cargo=presidente&uf=sp", True),
+            ("GET", "cors", "http://x/js/base.js", True), ("GET", "no-cors", "http://x/estilo.css", True),
+            ("GET", "cors", "http://x/api/placar?cargo=presidente", False), ("GET", "navigate", "http://x/api/mapa-municipal", False),
+            ("GET", "cors", "http://x/geo/pe.json", False), ("GET", "navigate", "http://x/og.png", False),
+            ("POST", "cors", "http://x/js/base.js", False), ("GET", "cors", "http://outro/js/base.js", False),
+            ("GET", "cors", "http://x/js/../servidor.py", False), ("GET", "cors", "http://x/js/dir/base.js", False),
+        ]
+        resultado = subprocess.run([node, "-e", programa, str(WEB / "sw.js"), json.dumps([caso[:3] for caso in casos])], capture_output=True, text=True)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr[-600:])
+        saida = json.loads(resultado.stdout)
+        self.assertEqual(saida["respondeu"], [caso[3] for caso in casos])
+        self.assertEqual(saida["guardados"], ["/", "/", "/js/base.js", "/estilo.css"])      # só a página e os arquivos dela
+
     def test_sintaxe_do_javascript(self):
         node = shutil.which("node")
         if not node:
             self.skipTest("node não está instalado")
-        with tempfile.TemporaryDirectory() as pasta:
-            arquivo = Path(pasta) / "pagina.js"
-            arquivo.write_text(script(), encoding="utf-8")
-            resultado = subprocess.run([node, "--check", str(arquivo)], capture_output=True, text=True)
-        self.assertEqual(resultado.returncode, 0, resultado.stderr)
+        for arquivo in [*(WEB / "js").glob("*.js"), WEB / "sw.js"]:
+            with self.subTest(arquivo=arquivo.name):
+                resultado = subprocess.run([node, "--check", str(arquivo)], capture_output=True, text=True)
+                self.assertEqual(resultado.returncode, 0, resultado.stderr)
 
 
 class GerarMapa(unittest.TestCase):

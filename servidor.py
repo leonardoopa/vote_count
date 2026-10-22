@@ -9,6 +9,8 @@ compartilham a mesma consulta, então o acesso ao TSE não cresce com o número
 de pessoas na página (o TSE bloqueia o IP que passar do limite).
 """
 import argparse
+import gzip
+import hashlib
 import json
 import os
 import re
@@ -30,7 +32,8 @@ import mapa
 import municipios
 import varredura
 
-PAGINA = Path(__file__).with_name("index.html")
+WEB = Path(__file__).with_name("web")  # tudo que o navegador recebe: página, estilo, scripts, service worker e desenhos
+PAGINA = WEB / "index.html"
 
 # Segundos entre consultas ao TSE por seleção. O CDN renova a cópia a cada ~12 s, mas
 # manda max-age de 17 a 54 s; seguir esse max-age atrasaria o placar sem necessidade.
@@ -444,7 +447,7 @@ ROTAS_API.update({
 
 # ---- mapa por município ----
 
-GEO = Path(__file__).with_name("geo")  # desenhos dos municípios, um arquivo por UF (tools/gerar_mapa.py --municipios)
+GEO = WEB / "geo"  # desenhos dos municípios, um arquivo por UF (tools/gerar_mapa.py --municipios)
 ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2})\.json$")
 
 
@@ -477,7 +480,7 @@ def mapa_municipal(consulta):
     return 200, corpo
 
 
-def desenho_dos_municipios(caminho):
+def desenho_dos_municipios(caminho, cabecalhos=None):
     """(status, tipo, corpo, extras) do arquivo geo/<uf>.json, ou None se o caminho não é de um desenho."""
     achado = ARQUIVO_GEO.match(caminho)
     if not achado or achado[1] not in contador.UFS:
@@ -485,7 +488,7 @@ def desenho_dos_municipios(caminho):
     arquivo = GEO / f"{achado[1]}.json"
     if not arquivo.is_file():
         return 404, "text/plain; charset=utf-8", b"desenho indisponivel", {}
-    return 200, "application/json; charset=utf-8", arquivo.read_bytes(), {"Cache-Control": "public, max-age=86400"}
+    return arquivo_da_pasta_web(arquivo, "application/json; charset=utf-8", cabecalhos)
 
 
 ROTAS_API["/api/mapa-municipal"] = mapa_municipal
@@ -554,7 +557,7 @@ ROTAS_API["/api/busca"] = busca_rapida
 
 URL_PUBLICA = os.environ.get("URL_PUBLICA", "")  # ex.: https://votos.exemplo.com.br; sem ela, vale o Host da requisição
 MARCA_DO_HEAD = "<!-- bloco: pwa e prévia de compartilhamento (head) -->"
-SERVICE_WORKER = Path(__file__).with_name("sw.js")
+SERVICE_WORKER = WEB / "sw.js"
 TTL_CARTAO = 60
 MAX_CARTOES = 64
 _CARTOES = OrderedDict()  # chave da seleção + totalização -> (vale até, PNG)
@@ -649,10 +652,38 @@ def icone(lado, mascara=False):
     return rota
 
 
-def arquivo_estatico(caminho, tipo):
-    def rota(consulta, cabecalhos=None):
-        return 200, tipo, caminho.read_bytes(), {}
-    return rota
+ARQUIVO_WEB = re.compile(r"^/(estilo\.css|js/[a-z0-9-]+\.js)$")  # os únicos caminhos que saem direto de web/
+TIPOS_DA_WEB = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
+MAX_GZIP = 64
+_GZIP = OrderedDict()  # ETag -> conteúdo comprimido
+_TRAVA_GZIP = threading.Lock()
+
+
+def arquivo_da_pasta_web(arquivo, tipo, cabecalhos=None):
+    """(status, tipo, corpo, extras) de um arquivo de web/.
+
+    O navegador revalida com ETag (304 sem corpo quando nada mudou) e recebe gzip se aceitar: os desenhos dos
+    municípios passam de 100 KB e o texto comprime bem.
+    """
+    try:
+        conteudo = arquivo.read_bytes()
+    except OSError:
+        return 404, "text/plain; charset=utf-8", b"nao encontrado", {}
+    etag = f'W/"{hashlib.sha1(conteudo).hexdigest()[:20]}"'
+    extras = {"ETag": etag, "Cache-Control": "no-cache", "Vary": "Accept-Encoding"}
+    cabecalhos = cabecalhos or {}
+    if etag[2:] in (cabecalhos.get("If-None-Match") or ""):
+        return 304, tipo, b"", extras
+    if len(conteudo) > 1024 and "gzip" in (cabecalhos.get("Accept-Encoding") or ""):
+        with _TRAVA_GZIP:
+            if etag not in _GZIP:
+                _GZIP[etag] = gzip.compress(conteudo, 6, mtime=0)
+                while len(_GZIP) > MAX_GZIP:
+                    _GZIP.popitem(last=False)
+            _GZIP.move_to_end(etag)
+            conteudo = _GZIP[etag]
+        extras["Content-Encoding"] = "gzip"
+    return 200, tipo, conteudo, extras
 
 
 # Rotas que não são JSON: caminho -> função(consulta, cabeçalhos) que devolve (status, tipo, corpo, cabeçalhos extras).
@@ -663,7 +694,7 @@ ROTAS_ARQUIVO = {
     "/icone-512-mascara.png": icone(512, mascara=True),
     "/manifest.webmanifest": lambda consulta, cabecalhos=None: (
         200, "application/manifest+json; charset=utf-8", json.dumps(MANIFESTO, ensure_ascii=False).encode(), {"Cache-Control": "public, max-age=3600"}),
-    "/sw.js": arquivo_estatico(SERVICE_WORKER, "text/javascript; charset=utf-8"),
+    "/sw.js": lambda consulta, cabecalhos=None: arquivo_da_pasta_web(SERVICE_WORKER, "text/javascript; charset=utf-8", cabecalhos),
 }
 
 
@@ -695,7 +726,10 @@ class Handler(BaseHTTPRequestHandler):
             self._enviar(status, tipo, corpo, extras)
         elif url.path == "/saude":
             self._enviar(200, "text/plain; charset=utf-8", b"ok")
-        elif (desenho := desenho_dos_municipios(url.path)) is not None:
+        elif ARQUIVO_WEB.match(url.path):
+            arquivo = WEB / url.path[1:]
+            self._enviar(*arquivo_da_pasta_web(arquivo, TIPOS_DA_WEB[arquivo.suffix], self.headers))
+        elif (desenho := desenho_dos_municipios(url.path, self.headers)) is not None:
             self._enviar(*desenho)
         else:
             self._enviar(404, "text/plain; charset=utf-8", b"nao encontrado")

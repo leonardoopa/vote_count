@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Gera os contornos das UFs para o mapa da página, a partir da malha do IBGE.
 
-    python3 tools/gerar_mapa.py > mapa-ufs.js          # baixa a malha do IBGE
+    python3 tools/gerar_mapa.py > web/js/contornos-ufs.js   # baixa a malha do IBGE
     python3 tools/gerar_mapa.py malha.geojson          # ou usa um arquivo já baixado
-    python3 tools/gerar_mapa.py --municipios geo       # um arquivo por UF, com os municípios, na pasta geo/
+    python3 tools/gerar_mapa.py --municipios web/geo   # um arquivo por UF, com os municípios, na pasta web/geo/
 
 Saída do primeiro modo: um objeto JavaScript `{uf: {d: caminho SVG, c: [x, y], l: largura}}` pronto para
-colar em index.html (constante MAPA_UFS), mais a linha com o tamanho do desenho. O modo `--municipios`
-grava `geo/<uf>.json` com `{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}}`, que o
+gravar em web/js/contornos-ufs.js (constante MAPA_UFS), mais a linha com o tamanho do desenho. O modo `--municipios`
+grava `web/geo/<uf>.json` com `{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}}`, que o
 servidor entrega em /geo/<uf>.json para o mapa por município. Só biblioteca padrão. Roda uma vez por
 eleição; o servidor nunca acessa o IBGE.
 """
@@ -143,7 +143,7 @@ def gerar_municipios(pasta, baixar_malha=baixar):
 
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--municipios":
-        pasta = sys.argv[2] if len(sys.argv) > 2 else "geo"
+        pasta = sys.argv[2] if len(sys.argv) > 2 else "web/geo"
         tamanhos = gerar_municipios(pasta)
         print(f"{len(tamanhos)} arquivos em {pasta}/, {sum(tamanhos.values()) / 1024:.0f} KB no total", file=sys.stderr)
         return

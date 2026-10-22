@@ -205,7 +205,7 @@ Para o histórico sobreviver a um reinício, defina `HISTORICO_DIR` (no Docker j
 
 `/api/disputas` devolve `{"disputas": [...]}` das corridas por menor diferença de votos: `entre` traz os dois candidatos que decidem a vaga (1º e 2º no governo; 2º e 3º no Senado, que tem 2 vagas por UF em 2026) e `situacao` é `apurando`, `eleito` ou `segundo_turno`. Ficam de fora as UFs sem disputa, sem dados e sem apuração iniciada.
 
-Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar_mapa.py` e embutida na página (o servidor nunca acessa o IBGE). Para refazer: `python3 tools/gerar_mapa.py` e colar a saída no lugar de `MAPA_UFS` em `index.html`.
+Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar_mapa.py` e gravada em `web/js/contornos-ufs.js` (o servidor nunca acessa o IBGE). Para refazer: `python3 tools/gerar_mapa.py > web/js/contornos-ufs.js`.
 
 ### Hemiciclo e mais votados
 
@@ -219,7 +219,8 @@ Esses dois precisam de um arquivo de deputados por UF (27 por cargo). Quem busca
 
 `GET /api/mapa-municipal` (presidente e governador, dentro de um estado: `cargo`, `uf`, `turno`, `ambiente`) devolve o líder de cada cidade da UF por código IBGE: `{"uf", "total", "carregadas", "idade_s", "cidades": {"3550308": {"nome", "codigo", "situacao", "lider", "margem", "margem_votos", "apurado", "final"}}}`. O TSE publica **um arquivo por cidade** (645 em SP), então as cidades são buscadas pelo mesmo varredor do hemiciclo, aos poucos (no máximo `BUSCAS_EXTRAS_POR_SEGUNDO`, padrão 2), e `carregadas` cresce a cada rodada; cada cidade é revista a cada 2 min (30 min depois de apurada), o que em SP significa uns 5 min por volta completa. Só começa quando alguém pede (na página, o botão "Carregar o mapa dos municípios"), e só se o arquivo da UF existir (evita 645 respostas 404 no 2º turno de governador em UF decidida no 1º).
 
-O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {código IBGE: caminho SVG}}`, uns 615 KB para as 27 UFs, na pasta `geo/`). A página liga desenho e dados pelo código IBGE (`cdi`) que o TSE já traz no arquivo de cidades. Se o desenho não baixar, a página avisa e tenta de novo. Para refazer os arquivos: `python3 tools/gerar_mapa.py --municipios geo`.
+O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {código IBGE: caminho SVG}}`, uns 615 KB para as 27 UFs, na pasta `web/geo/`). A página liga desenho e dados pelo código IBGE (`cdi`) que o TSE já traz no arquivo de cidades. Se o desenho não baixar, a página avisa e tenta de novo. Para refazer os arquivos: `python3 tools/gerar_mapa.py --municipios web/geo`.
+
 
 ### Busca rápida
 
@@ -229,7 +230,7 @@ O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {c
 
 **Prévia do link.** Quem monta o link com `?cargo=governador&uf=sp&turno=1` (a própria página atualiza o endereço quando você troca o filtro) vê a prévia da seleção no WhatsApp, no X e em outros: o servidor escreve as meta tags Open Graph no HTML, com título, uma descrição que usa o placar que já está em cache e a imagem `GET /og.png` (1200x630, mesmos parâmetros de `/api/resultado`). A imagem é um PNG desenhado pelo próprio servidor (`imagem.py`, só `zlib`), com o placar dos quatro primeiros, as cores por partido, o selo de eleito ou 2º turno e o horário da última totalização. Cada imagem fica 60 s em memória (no máximo 64). A página nunca ecoa o que veio na URL: só valores validados entram nas meta tags. Os endereços absolutos saem de `URL_PUBLICA` ou, sem ela, do `Host` (e `X-Forwarded-Proto`) da requisição.
 
-**App instalável.** `/manifest.webmanifest`, `/icone-192.png`, `/icone-512.png`, `/icone-512-mascara.png` e `/sw.js` permitem instalar a página no celular e no computador. O service worker só guarda a própria página, como reserva para abrir sem rede; os dados (`/api/*`) nunca são guardados. Ele só é registrado em HTTPS ou em `localhost`/`127.0.0.1`.
+**App instalável.** `/manifest.webmanifest`, `/icone-192.png`, `/icone-512.png`, `/icone-512-mascara.png` e `/sw.js` permitem instalar a página no celular e no computador. O service worker só guarda a própria página e os arquivos dela (`/estilo.css` e `/js/*.js`), como reserva para abrir sem rede; os dados (`/api/*`) nunca são guardados. Ele só é registrado em HTTPS ou em `localhost`/`127.0.0.1`.
 
 **Alertas.** O botão "Alertas" liga notificações do navegador para a seleção que está na tela: quando a apuração começa, quando alguém é eleito ou vai ao 2º turno e quando a apuração termina. Funcionam com a página aberta, também em segundo plano (nesse caso a página volta a buscar a cada 30 s). Não há servidor de push: fechar a aba (ou o app) para os alertas.
 
@@ -287,7 +288,7 @@ Ideias soltas, fora do Roadmap original: alerta por push de verdade (hoje só co
 ### Regras para quem implementar
 
 - Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor. A exceção são os recursos que precisam de dezenas ou centenas de arquivos (hemiciclo da Câmara, mais votados e mapa por município): quem busca é só o varredor, com teto de `BUSCAS_EXTRAS_POR_SEGUNDO` no total (padrão 2, contra os 100 do TSE) e só enquanto alguém olha.
-- Manter a página num arquivo só, sem dependência de CDN, e o tema claro e escuro.
+- Manter a página sem dependência de CDN nem etapa de build (os arquivos de `web/` saem do servidor como estão), e o tema claro e escuro. Cada recurso novo da página ganha o próprio arquivo em `web/js/` e entra em `web/index.html`; os scripts são clássicos e compartilham o escopo global, então a ordem das tags importa (`base.js` primeiro, `iniciar.js` por último).
 - Cada item novo ganha teste em `test_servidor.py` ou `test_contador.py`.
 - Atualizar a seção [API](#api) quando criar endpoint.
 
@@ -296,7 +297,12 @@ Ideias soltas, fora do Roadmap original: alerta por push de verdade (hoje só co
 ```
 contador.py        leitura do TSE e placar no terminal
 servidor.py        servidor web: cache compartilhado, rotas e API
-index.html         página (HTML, CSS e JS num arquivo só)
+web/               tudo que o navegador recebe, servido como está
+  index.html       a página (só o HTML; o servidor põe as meta tags de prévia no `<head>`)
+  estilo.css       estilos, tema claro e escuro
+  js/              um script por recurso: base, painel, mapa-brasil, mapa-municipios, zoom-mapa, evolucao, hemiciclo…
+  sw.js            service worker (app instalável)
+  geo/             desenho e nome dos municípios, uma UF por arquivo
 historico.py       série do placar, replay e feed de atualizações
 mapa.py            resumo por UF: mapa, regiões, disputas e Senado
 deputados.py       hemiciclo da Câmara e mais votados
@@ -305,8 +311,6 @@ varredura.py       varredor de segundo plano (poucas buscas por segundo, no tota
 compartilhar.py    meta tags e imagem de prévia do link
 imagem.py          gerador de PNG (cartão de prévia e ícones), só zlib
 anuncio.py         faixa de anúncio no topo
-sw.js              service worker (app instalável)
-geo/               desenho dos municípios, uma UF por arquivo
 tools/             geradores dos desenhos do mapa (IBGE)
 tse_falso.py       TSE de mentira para demonstração e testes
 test_*.py          testes (unittest)

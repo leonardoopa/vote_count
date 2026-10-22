@@ -156,7 +156,8 @@ class Desenhos(unittest.TestCase):
     def test_todas_as_ufs_tem_desenho_e_ele_bate_com_o_codigo_do_tse(self):
         for uf in contador.UFS:
             status, tipo, corpo, extras = servidor.desenho_dos_municipios(f"/geo/{uf}.json")
-            self.assertEqual((status, tipo, extras["Cache-Control"]), (200, "application/json; charset=utf-8", "public, max-age=86400"))
+            self.assertEqual((status, tipo, extras["Cache-Control"]), (200, "application/json; charset=utf-8", "no-cache"))
+            self.assertTrue(extras["ETag"].startswith('W/"'))
             desenho = json.loads(corpo)
             self.assertEqual(set(desenho), {"w", "h", "m"})
             self.assertTrue(all(d.startswith("M") and d.endswith("z") for d in desenho["m"].values()))
@@ -199,7 +200,7 @@ class Http(unittest.TestCase):
 
     def test_desenho_pelo_http(self):
         resposta, corpo = self.pedir("/geo/sp.json")
-        self.assertEqual((resposta.status, resposta.getheader("Cache-Control")), (200, "public, max-age=86400"))
+        self.assertEqual((resposta.status, resposta.getheader("Cache-Control")), (200, "no-cache"))
         self.assertGreater(len(json.loads(corpo)["m"]), 600)
         self.assertEqual(self.pedir("/geo/zz.json")[0].status, 404)
         self.assertEqual(self.pedir("/geo/..%2Fservidor.py")[0].status, 404)

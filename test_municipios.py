@@ -78,6 +78,22 @@ class Relogio:
         return self.agora
 
 
+class Foco(unittest.TestCase):
+    IBGE = {"71072": "3550308", "71111": "3500105", "71120": "3500204"}
+
+    def test_codigos_do_tse_na_ordem_pedida(self):
+        self.assertEqual(municipios.codigos_em_foco("3500204, 3550308,3550308,lixo,9999999,", self.IBGE), ["71120", "71072"])
+
+    def test_vazio_e_sem_cidade_conhecida(self):
+        self.assertEqual(municipios.codigos_em_foco("", self.IBGE), [])
+        self.assertEqual(municipios.codigos_em_foco("1234567", {}), [])
+
+    def test_no_maximo_max_foco(self):
+        ibge = {str(i): str(1000000 + i) for i in range(200)}
+        pedido = ",".join(ibge.values())
+        self.assertEqual(len(municipios.codigos_em_foco(pedido, ibge)), municipios.MAX_FOCO)
+
+
 class Rota(unittest.TestCase):
     """A rota de verdade com varredor e cache de verdade, sem thread e com o TSE falso no lugar da rede."""
 
@@ -140,6 +156,22 @@ class Rota(unittest.TestCase):
         status, corpo = servidor.mapa_municipal({"ambiente": ["simulado"], "cargo": ["presidente"], "uf": ["ac"]})
         self.assertEqual((status, corpo["cargo"]), (200, "presidente"))
 
+    def test_o_foco_da_pagina_fura_a_fila_do_varredor(self):
+        servidor.mapa_municipal(self.consulta)                       # cria o grupo, sem nada em foco
+        vistas = tse_falso.cidades_da_uf("ac")[-3:]                  # as últimas da lista: a página as está vendo
+        foco = ",".join(ibge for _, ibge, _ in reversed(vistas))
+        self.assertEqual(servidor.mapa_municipal({**self.consulta, "foco": [foco]})[0], 200)
+        antes = len(self.pedidos)
+        for _ in range(3):
+            servidor.VARREDOR.passo()
+        esperados = [contador.montar_url("simulado", "governador", "ac", 1, municipio=tse) for tse, _, _ in reversed(vistas)]
+        self.assertEqual(self.pedidos[antes:], esperados)
+
+    def test_foco_com_lixo_nao_derruba_a_rota(self):
+        for foco in ("", ",,,", "x,9999999,\U0001f4a5", "1" * 5000, ",".join(["3000000"] * 500)):
+            with self.subTest(foco=foco[:20]):
+                self.assertEqual(servidor.mapa_municipal({**self.consulta, "foco": [foco]})[0], 200)
+
     def test_varredor_desligado_da_503(self):
         with mock.patch.object(servidor, "VARREDOR", Varredor(0)):
             self.assertEqual(servidor.mapa_municipal(self.consulta), servidor.RECURSO_DESLIGADO)
@@ -156,9 +188,12 @@ class Desenhos(unittest.TestCase):
     def test_todas_as_ufs_tem_desenho_e_ele_bate_com_o_codigo_do_tse(self):
         for uf in contador.UFS:
             status, tipo, corpo, extras = servidor.desenho_dos_municipios(f"/geo/{uf}.json")
-            self.assertEqual((status, tipo, extras["Cache-Control"]), (200, "application/json; charset=utf-8", "public, max-age=86400"))
+            self.assertEqual((status, tipo, extras["Cache-Control"]), (200, "application/json; charset=utf-8", "no-cache"))
+            self.assertTrue(extras["ETag"].startswith('W/"'))
             desenho = json.loads(corpo)
-            self.assertEqual(set(desenho), {"w", "h", "m"})
+            self.assertEqual(set(desenho), {"w", "h", "m", "n"})
+            self.assertEqual(set(desenho["n"]), set(desenho["m"]))                     # todo município desenhado tem nome
+            self.assertTrue(all(isinstance(nome, str) and nome for nome in desenho["n"].values()))
             self.assertTrue(all(d.startswith("M") and d.endswith("z") for d in desenho["m"].values()))
             self.assertTrue(all(len(c) == 7 and c.isdigit() for c in desenho["m"]))  # código IBGE do município
 
@@ -199,7 +234,7 @@ class Http(unittest.TestCase):
 
     def test_desenho_pelo_http(self):
         resposta, corpo = self.pedir("/geo/sp.json")
-        self.assertEqual((resposta.status, resposta.getheader("Cache-Control")), (200, "public, max-age=86400"))
+        self.assertEqual((resposta.status, resposta.getheader("Cache-Control")), (200, "no-cache"))
         self.assertGreater(len(json.loads(corpo)["m"]), 600)
         self.assertEqual(self.pedir("/geo/zz.json")[0].status, 404)
         self.assertEqual(self.pedir("/geo/..%2Fservidor.py")[0].status, 404)

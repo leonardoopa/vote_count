@@ -65,7 +65,7 @@ def codigo_cidade(uf, indice):
 def cidades_da_uf(uf):
     """[(código TSE, código IBGE, nome)]: uma cidade por município do desenho da UF (geo/<uf>.json), para o mapa
     por município funcionar na demonstração; sem o arquivo, as 5 cidades inventadas."""
-    arquivo = Path(__file__).with_name("geo") / f"{uf}.json"
+    arquivo = Path(__file__).with_name("web") / "geo" / f"{uf}.json"
     if arquivo.is_file():
         ibge = sorted(json.loads(arquivo.read_text(encoding="utf-8"))["m"])
         nomes = [f"{CIDADES[i % len(CIDADES)]} {i // len(CIDADES) + 1}" for i in range(len(ibge))]

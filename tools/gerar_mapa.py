@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Gera os contornos das UFs para o mapa da página, a partir da malha do IBGE.
 
-    python3 tools/gerar_mapa.py > mapa-ufs.js          # baixa a malha do IBGE
-    python3 tools/gerar_mapa.py malha.geojson          # ou usa um arquivo já baixado
-    python3 tools/gerar_mapa.py --municipios geo       # um arquivo por UF, com os municípios, na pasta geo/
+    python3 tools/gerar_mapa.py > web/js/contornos-ufs.js   # baixa a malha do IBGE
+    python3 tools/gerar_mapa.py malha.geojson               # ou usa um arquivo já baixado
+    python3 tools/gerar_mapa.py --municipios web/geo        # um arquivo por UF, com os municípios
+    python3 tools/gerar_mapa.py --mundo web/geo             # web/geo/mundo.json, com os países (Natural Earth)
 
-Saída do primeiro modo: um objeto JavaScript `{uf: {d: caminho SVG, c: [x, y], l: largura}}` pronto para
-colar em index.html (constante MAPA_UFS), mais a linha com o tamanho do desenho. O modo `--municipios`
-grava `geo/<uf>.json` com `{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}}`, que o
-servidor entrega em /geo/<uf>.json para o mapa por município. Só biblioteca padrão. Roda uma vez por
-eleição; o servidor nunca acessa o IBGE.
+Saída do primeiro modo: o script `web/js/contornos-ufs.js`, com o objeto `{uf: {d: caminho SVG, c: [x, y], l: largura}}`
+(constante MAPA_UFS) e o tamanho do desenho. O modo `--municipios` grava `web/geo/<uf>.json` com
+`{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}, "n": {código IBGE: nome}}`, que o
+servidor entrega em /geo/<uf>.json para o mapa por município. Os municípios saem com bastante detalhe porque
+o mapa dá zoom até uma cidade pequena. O modo `--mundo` grava `web/geo/mundo.json` no mesmo formato, com o código
+ISO 3166-1 alfa-2 de cada país no lugar do código IBGE (malha 1:50 milhões do Natural Earth, domínio público, em projeção
+de Miller, sem a Antártida). Só biblioteca padrão. Roda uma vez por eleição; o servidor nunca acessa o IBGE.
 """
 import gzip
 import json
@@ -19,7 +22,9 @@ import sys
 import urllib.request
 
 URL = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=UF"
-URL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{codigo}?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=municipio"
+URL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{codigo}?formato=application/vnd.geo%2Bjson&qualidade=intermediaria&intrarregiao=municipio"
+URL_MUNDO = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson"
+URL_NOMES = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/{codigo}/municipios"
 SIGLAS = {
     "11": "ro", "12": "ac", "13": "am", "14": "rr", "15": "pa", "16": "ap", "17": "to", "21": "ma", "22": "pi",
     "23": "ce", "24": "rn", "25": "pb", "26": "pe", "27": "al", "28": "se", "29": "ba", "31": "mg", "32": "es",
@@ -28,7 +33,11 @@ SIGLAS = {
 LARGURA = 1000     # unidades do desenho na horizontal
 TOLERANCIA = 1.0   # simplificação (unidades do desenho); quanto maior, menor o arquivo
 AREA_MINIMA = 12   # ilhas menores que isso (unidades²) somem
-TOLERANCIA_MUNICIPIOS = 0.7  # os municípios são pequenos: simplifica menos
+LARGURA_MUNDO = 2400         # unidades do desenho do mundo (360 graus de longitude)
+TOLERANCIA_MUNDO = 0.7       # unidades do desenho (cerca de 0,1 grau)
+AREA_MINIMA_MUNDO = 1.5      # ilhas menores que isso somem, menos a maior de cada país
+LARGURA_MUNICIPIOS = 4000    # unidades do desenho de cada UF: o mapa dá zoom, então os municípios têm mais resolução
+TOLERANCIA_MUNICIPIOS = 1.0  # em unidades do desenho (cerca de 200 m): os municípios são pequenos, simplifica pouco
 
 
 def aneis(geometria):
@@ -96,8 +105,9 @@ def converter(dados, chave_de, largura=LARGURA, tolerancia=TOLERANCIA, area_mini
     lons = [p[0] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
     lats = [p[1] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
     fator = math.cos(math.radians((min(lats) + max(lats)) / 2 if latitude is None else latitude))  # um grau de longitude vale menos que um de latitude
-    escala = largura / ((max(lons) - min(lons)) * fator)
-    projetar = lambda lon, lat: ((lon - min(lons)) * fator * escala, (max(lats) - lat) * escala)
+    esquerda, topo = min(lons), max(lats)
+    escala = largura / ((max(lons) - esquerda) * fator)
+    projetar = lambda lon, lat: ((lon - esquerda) * fator * escala, (topo - lat) * escala)
     saida = {}
     for feicao in dados["features"]:
         d, maior = [], (0, None, None)
@@ -126,24 +136,80 @@ def baixar(url):
     return json.loads(corpo)
 
 
-def gerar_municipios(pasta, baixar_malha=baixar):
-    """Um arquivo `<uf>.json` por UF com o desenho dos municípios. Devolve {uf: tamanho do arquivo em bytes}."""
+def gerar_municipios(pasta, baixar_malha=baixar, baixar_nomes=baixar):
+    """Um arquivo `<uf>.json` por UF com o desenho e o nome dos municípios. Devolve {uf: tamanho do arquivo em bytes}."""
     os.makedirs(pasta, exist_ok=True)
     tamanhos = {}
     for codigo, sigla in sorted(SIGLAS.items(), key=lambda par: par[1]):
         largura, altura, formas = converter(
             baixar_malha(URL_MUNICIPIOS.format(codigo=codigo)), lambda f: f["properties"]["codarea"],
-            tolerancia=TOLERANCIA_MUNICIPIOS, area_minima=0)
-        conteudo = json.dumps({"w": largura, "h": altura, "m": {c: f["d"] for c, f in sorted(formas.items())}}, separators=(",", ":"))
+            largura=LARGURA_MUNICIPIOS, tolerancia=TOLERANCIA_MUNICIPIOS, area_minima=0)
+        nomes = {str(m["id"]): m["nome"] for m in baixar_nomes(URL_NOMES.format(codigo=codigo))}
+        conteudo = json.dumps({"w": largura, "h": altura, "m": {c: f["d"] for c, f in sorted(formas.items())},
+                               "n": {c: nomes[c] for c in sorted(formas) if c in nomes}}, separators=(",", ":"), ensure_ascii=False)
         with open(os.path.join(pasta, f"{sigla}.json"), "w", encoding="utf-8") as arquivo:
             arquivo.write(conteudo)
         tamanhos[sigla] = len(conteudo.encode("utf-8"))
     return tamanhos
 
 
+def miller(lon, lat):
+    """Projeção de Miller (cilíndrica, sem o exagero das áreas polares de Mercator): (x, y) em radianos."""
+    return math.radians(lon), 1.25 * math.log(math.tan(math.pi / 4 + 0.4 * math.radians(lat)))
+
+
+def converter_mundo(dados, largura=LARGURA_MUNDO, tolerancia=TOLERANCIA_MUNDO, area_minima=AREA_MINIMA_MUNDO):
+    """(largura, altura, {ISO alfa-2: caminho SVG}, {ISO alfa-2: nome em português}) de uma malha GeoJSON de países do Natural Earth.
+
+    Ficam de fora a Antártida e o que não tem código ISO (Somalilândia, Chipre do Norte, geleira Siachen)."""
+    paises = []
+    for feicao in dados["features"]:
+        propriedades = feicao["properties"]
+        iso = propriedades.get("ISO_A2_EH") or ""
+        if len(iso) != 2 or iso == "AQ" or not iso.isalpha():
+            continue
+        paises.append((iso, propriedades.get("NAME_PT") or propriedades.get("NAME") or iso, [[miller(*p) for p in anel] for anel in aneis(feicao["geometry"])]))
+    xs = [x for _, _, aneis_ in paises for anel in aneis_ for x, _ in anel]
+    ys = [y for _, _, aneis_ in paises for anel in aneis_ for _, y in anel]
+    escala = largura / (max(xs) - min(xs))
+    esquerda, topo = min(xs), max(ys)
+    formas, nomes = {}, {}
+    for iso, nome, aneis_ in paises:
+        d, maior = [], (0, None)
+        for anel in aneis_:
+            projetado = [((x - esquerda) * escala, (topo - y) * escala) for x, y in anel]
+            simples = simplificar_anel(projetado, tolerancia)
+            if len(simples) < 3:   # ilha minúscula: a simplificação a apagaria, fica como veio
+                simples = projetado[:-1] if projetado[0] == projetado[-1] else projetado
+            if len(simples) < 3:
+                continue
+            area, _ = area_e_centro(simples)
+            d.append((area, caminho(simples)))
+            maior = max(maior, (area, None))
+        manter = [c for a, c in d if a >= area_minima or a == maior[0]]
+        if manter:
+            formas[iso] = "".join(manter)
+            nomes[iso] = nome
+    return largura, round((max(ys) - min(ys)) * escala), formas, nomes
+
+
+def gerar_mundo(pasta, baixar_mundo=baixar):
+    """Grava `<pasta>/mundo.json` com `{"w", "h", "m": {ISO: caminho}, "n": {ISO: nome}}`. Devolve o tamanho em bytes."""
+    os.makedirs(pasta, exist_ok=True)
+    largura, altura, formas, nomes = converter_mundo(baixar_mundo(URL_MUNDO))
+    conteudo = json.dumps({"w": largura, "h": altura, "m": dict(sorted(formas.items())), "n": dict(sorted(nomes.items()))}, separators=(",", ":"), ensure_ascii=False)
+    with open(os.path.join(pasta, "mundo.json"), "w", encoding="utf-8") as arquivo:
+        arquivo.write(conteudo)
+    return len(conteudo.encode("utf-8"))
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--mundo":
+        pasta = sys.argv[2] if len(sys.argv) > 2 else "web/geo"
+        print(f"{pasta}/mundo.json: {gerar_mundo(pasta) / 1024:.0f} KB", file=sys.stderr)
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "--municipios":
-        pasta = sys.argv[2] if len(sys.argv) > 2 else "geo"
+        pasta = sys.argv[2] if len(sys.argv) > 2 else "web/geo"
         tamanhos = gerar_municipios(pasta)
         print(f"{len(tamanhos)} arquivos em {pasta}/, {sum(tamanhos.values()) / 1024:.0f} KB no total", file=sys.stderr)
         return

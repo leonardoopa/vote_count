@@ -9,6 +9,8 @@ compartilham a mesma consulta, então o acesso ao TSE não cresce com o número
 de pessoas na página (o TSE bloqueia o IP que passar do limite).
 """
 import argparse
+import gzip
+import hashlib
 import json
 import os
 import re
@@ -24,13 +26,15 @@ import anuncio
 import compartilhar
 import contador
 import deputados
+import exterior
 import historico
 import imagem
 import mapa
 import municipios
 import varredura
 
-PAGINA = Path(__file__).with_name("index.html")
+WEB = Path(__file__).with_name("web")  # tudo que o navegador recebe: página, estilo, scripts, service worker e desenhos
+PAGINA = WEB / "index.html"
 
 # Segundos entre consultas ao TSE por seleção. O CDN renova a cópia a cada ~12 s, mas
 # manda max-age de 17 a 54 s; seguir esse max-age atrasaria o placar sem necessidade.
@@ -444,8 +448,8 @@ ROTAS_API.update({
 
 # ---- mapa por município ----
 
-GEO = Path(__file__).with_name("geo")  # desenhos dos municípios, um arquivo por UF (tools/gerar_mapa.py --municipios)
-ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2})\.json$")
+GEO = WEB / "geo"  # desenhos dos municípios, um arquivo por UF, e o do mundo (tools/gerar_mapa.py --municipios e --mundo)
+ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2}|mundo)\.json$")
 
 
 def mapa_municipal(consulta):
@@ -472,23 +476,62 @@ def mapa_municipal(consulta):
         return trabalhos, municipios.resumir_cidade, municipios.intervalo
 
     grupo = VARREDOR.pedir(("cidades", ambiente, cargo, turno, uf), fabrica)
+    VARREDOR.priorizar(grupo, municipios.codigos_em_foco(consulta.get("foco", [""])[0], ibge))
     corpo = municipios.montar(uf, lista, ibge, VARREDOR.resumos(grupo), VARREDOR.relogio())
     corpo.update(cargo=cargo, turno=turno, ambiente=ambiente)
     return 200, corpo
 
 
-def desenho_dos_municipios(caminho):
+def desenho_dos_municipios(caminho, cabecalhos=None):
     """(status, tipo, corpo, extras) do arquivo geo/<uf>.json, ou None se o caminho não é de um desenho."""
     achado = ARQUIVO_GEO.match(caminho)
-    if not achado or achado[1] not in contador.UFS:
+    if not achado or (achado[1] != "mundo" and achado[1] not in contador.UFS):
         return None
     arquivo = GEO / f"{achado[1]}.json"
     if not arquivo.is_file():
         return 404, "text/plain; charset=utf-8", b"desenho indisponivel", {}
-    return 200, "application/json; charset=utf-8", arquivo.read_bytes(), {"Cache-Control": "public, max-age=86400"}
+    return arquivo_da_pasta_web(arquivo, "application/json; charset=utf-8", cabecalhos)
 
 
 ROTAS_API["/api/mapa-municipal"] = mapa_municipal
+
+
+# ---- mapa-múndi: o voto no exterior por país ----
+
+def mundo(consulta):
+    """(status, corpo) do exterior por país, para o mapa-múndi. Com `pais` (ISO alfa-2), traz também o detalhe dele.
+
+    O TSE publica um arquivo por cidade do exterior (embaixadas e consulados); o varredor busca os 186 aos poucos, como no mapa
+    por município, e `exterior.py` soma por país. O Brasil vem do resumo por UF, que a página já pede.
+    """
+    ambiente, turno = consulta.get("ambiente", ["oficial"])[0], consulta.get("turno", ["1"])[0]
+    pais = consulta.get("pais", [""])[0].upper()
+    if ambiente not in contador.AMBIENTES or turno not in ("1", "2") or (pais and not re.fullmatch(r"[A-Z]{2}", pais)):
+        return 400, {"erro": "ambiente, turno ou país inválido"}
+    if not VARREDOR.ligado:
+        return RECURSO_DESLIGADO
+    turno = int(turno)
+    config, status, _ = CACHE.obter(contador.url_municipios(ambiente, "presidente", turno), ttl=TTL_MUNICIPIOS)
+    if config is None:
+        return erro_do_tse(status, "O TSE não publicou a lista de cidades desta eleição.")
+    dados, status, _ = CACHE.obter(contador.montar_url(ambiente, "presidente", "zz", turno))
+    if dados is None:   # só varre se o arquivo do exterior existe (no 2º turno ele só aparece depois da apuração começar)
+        return erro_do_tse(status, "O TSE ainda não publicou o resultado do exterior.")
+    cidades = exterior.cidades_do_exterior(config)
+
+    def fabrica():
+        trabalhos = {c["codigo"]: varredura.Trabalho(c["codigo"], contador.montar_url(ambiente, "presidente", "zz", turno, municipio=c["codigo"])) for c in cidades}
+        return trabalhos, exterior.resumir_cidade, municipios.intervalo
+
+    grupo = VARREDOR.pedir(("exterior", ambiente, turno), fabrica)
+    corpo = exterior.montar(cidades, VARREDOR.resumos(grupo), VARREDOR.relogio(), pais or None)
+    corpo.update(ambiente=ambiente, turno=turno)
+    status_do_mapa, mapa_dos_estados = resumo_do_cargo("presidente", ambiente, turno)
+    corpo["brasil"] = exterior.brasil(mapa_dos_estados) if status_do_mapa == 200 else None
+    return 200, corpo
+
+
+ROTAS_API["/api/mundo"] = mundo
 
 
 # ---- busca rápida ----
@@ -554,7 +597,7 @@ ROTAS_API["/api/busca"] = busca_rapida
 
 URL_PUBLICA = os.environ.get("URL_PUBLICA", "")  # ex.: https://votos.exemplo.com.br; sem ela, vale o Host da requisição
 MARCA_DO_HEAD = "<!-- bloco: pwa e prévia de compartilhamento (head) -->"
-SERVICE_WORKER = Path(__file__).with_name("sw.js")
+SERVICE_WORKER = WEB / "sw.js"
 TTL_CARTAO = 60
 MAX_CARTOES = 64
 _CARTOES = OrderedDict()  # chave da seleção + totalização -> (vale até, PNG)
@@ -649,10 +692,38 @@ def icone(lado, mascara=False):
     return rota
 
 
-def arquivo_estatico(caminho, tipo):
-    def rota(consulta, cabecalhos=None):
-        return 200, tipo, caminho.read_bytes(), {}
-    return rota
+ARQUIVO_WEB = re.compile(r"^/(estilo\.css|js/[a-z0-9-]+\.js)$")  # os únicos caminhos que saem direto de web/
+TIPOS_DA_WEB = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
+MAX_GZIP = 64
+_GZIP = OrderedDict()  # ETag -> conteúdo comprimido
+_TRAVA_GZIP = threading.Lock()
+
+
+def arquivo_da_pasta_web(arquivo, tipo, cabecalhos=None):
+    """(status, tipo, corpo, extras) de um arquivo de web/.
+
+    O navegador revalida com ETag (304 sem corpo quando nada mudou) e recebe gzip se aceitar: os desenhos dos
+    municípios passam de 100 KB e o texto comprime bem.
+    """
+    try:
+        conteudo = arquivo.read_bytes()
+    except OSError:
+        return 404, "text/plain; charset=utf-8", b"nao encontrado", {}
+    etag = f'W/"{hashlib.sha1(conteudo).hexdigest()[:20]}"'
+    extras = {"ETag": etag, "Cache-Control": "no-cache", "Vary": "Accept-Encoding"}
+    cabecalhos = cabecalhos or {}
+    if etag[2:] in (cabecalhos.get("If-None-Match") or ""):
+        return 304, tipo, b"", extras
+    if len(conteudo) > 1024 and "gzip" in (cabecalhos.get("Accept-Encoding") or ""):
+        with _TRAVA_GZIP:
+            if etag not in _GZIP:
+                _GZIP[etag] = gzip.compress(conteudo, 6, mtime=0)
+                while len(_GZIP) > MAX_GZIP:
+                    _GZIP.popitem(last=False)
+            _GZIP.move_to_end(etag)
+            conteudo = _GZIP[etag]
+        extras["Content-Encoding"] = "gzip"
+    return 200, tipo, conteudo, extras
 
 
 # Rotas que não são JSON: caminho -> função(consulta, cabeçalhos) que devolve (status, tipo, corpo, cabeçalhos extras).
@@ -663,7 +734,7 @@ ROTAS_ARQUIVO = {
     "/icone-512-mascara.png": icone(512, mascara=True),
     "/manifest.webmanifest": lambda consulta, cabecalhos=None: (
         200, "application/manifest+json; charset=utf-8", json.dumps(MANIFESTO, ensure_ascii=False).encode(), {"Cache-Control": "public, max-age=3600"}),
-    "/sw.js": arquivo_estatico(SERVICE_WORKER, "text/javascript; charset=utf-8"),
+    "/sw.js": lambda consulta, cabecalhos=None: arquivo_da_pasta_web(SERVICE_WORKER, "text/javascript; charset=utf-8", cabecalhos),
 }
 
 
@@ -695,7 +766,10 @@ class Handler(BaseHTTPRequestHandler):
             self._enviar(status, tipo, corpo, extras)
         elif url.path == "/saude":
             self._enviar(200, "text/plain; charset=utf-8", b"ok")
-        elif (desenho := desenho_dos_municipios(url.path)) is not None:
+        elif ARQUIVO_WEB.match(url.path):
+            arquivo = WEB / url.path[1:]
+            self._enviar(*arquivo_da_pasta_web(arquivo, TIPOS_DA_WEB[arquivo.suffix], self.headers))
+        elif (desenho := desenho_dos_municipios(url.path, self.headers)) is not None:
             self._enviar(*desenho)
         else:
             self._enviar(404, "text/plain; charset=utf-8", b"nao encontrado")

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contador de votos 2026</title>
+<meta name="description" content="Acompanhe a totalização das Eleições 2026 em tempo real, com dados oficiais do TSE.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<!-- bloco: pwa e prévia de compartilhamento (head) -->
+<link rel="stylesheet" href="/estilo.css">
+<script defer src="/js/base.js"></script>
+<script defer src="/js/painel.js"></script>
+<script defer src="/js/resumo-exportar.js"></script>
+<script defer src="/js/comparar.js"></script>
+<script defer src="/js/busca.js"></script>
+<script defer src="/js/alertas.js"></script>
+<script defer src="/js/hemiciclo.js"></script>
+<script defer src="/js/zoom-mapa.js"></script>
+<script defer src="/js/mapa-municipios.js"></script>
+<script defer src="/js/tela-cheia.js"></script>
+<script defer src="/js/evolucao.js"></script>
+<script defer src="/js/contornos-ufs.js"></script>
+<script defer src="/js/mapa-brasil.js"></script>
+<script defer src="/js/mundo.js"></script>
+<script defer src="/js/anuncio.js"></script>
+<script defer src="/js/iniciar.js"></script>
+</head>
+<body>
+<div class="pagina">
+  <!-- bloco: anúncio (faixa de publicidade no topo) -->
+  <aside class="anuncio" id="anuncio" aria-label="Publicidade" hidden></aside>
+  <header class="cabecalho">
+    <div>
+      <h1>Contador de votos · Eleições 2026</h1>
+      <p class="sub" id="subtitulo">Carregando…</p>
+    </div>
+    <div class="cabecalho-direita">
+      <div class="selos" id="selos" aria-live="polite"></div>
+      <span class="selo ao-vivo" id="ao-vivo" role="status" hidden></span>
+      <button class="botao" id="alertas" type="button" aria-pressed="false" hidden>Alertas: desligados</button>
+      <button class="botao" id="abrir-busca" type="button" aria-keyshortcuts="/ Control+K Meta+K">Buscar <kbd>/</kbd></button>
+      <button class="botao" id="abrir-comparar" type="button">Comparar</button>
+      <button class="botao" id="tela-cheia" type="button" hidden>Tela cheia</button>
+    </div>
+  </header>
+
+  <form class="filtros" id="filtros" onsubmit="return false">
+    <label>Cargo <select id="cargo"></select></label>
+    <label>Território <select id="uf"></select></label>
+    <label class="cidade" id="rotulo-cidade" hidden>Cidade
+      <input id="cidade" type="search" list="cidades" placeholder="Todo o estado — digite para buscar" autocomplete="off" autocapitalize="words" spellcheck="false">
+      <datalist id="cidades"></datalist>
+    </label>
+    <label>Turno
+      <select id="turno"><option value="1">1º turno (04/10)</option><option value="2">2º turno (25/10)</option></select>
+    </label>
+    <label>Dados
+      <select id="ambiente"><option value="oficial">Oficiais do TSE</option><option value="simulado">Simulado (teste)</option></select>
+    </label>
+  </form>
+
+  <p class="aviso" id="aviso" role="status" hidden></p>
+
+  <main class="painel" id="painel">
+    <section class="cartao heroi" aria-label="Progresso da apuração">
+      <div class="rotulo">Seções apuradas</div>
+      <div class="valor" id="heroi-valor">—</div>
+      <div class="medidor" role="progressbar" aria-label="Seções apuradas" aria-valuemin="0" aria-valuemax="100" id="medidor"><i id="medidor-barra" style="width:0"></i></div>
+      <div class="detalhe" id="heroi-detalhe"></div>
+    </section>
+
+    <section class="cartao resumo" id="resumo" aria-label="Resumo do placar" hidden>
+      <div class="resumo-principal">
+        <div class="rotulo" id="resumo-rotulo"></div>
+        <div class="valor" id="resumo-valor"></div>
+        <div class="detalhe" id="resumo-detalhe"></div>
+      </div>
+      <div class="resumo-destaques" id="resumo-destaques"></div>
+    </section>
+
+    <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
+
+    <!-- bloco: mapa-múndi (exterior por país) -->
+    <nav class="trilha" id="trilha" aria-label="Onde você está no mapa" hidden></nav>
+    <section class="cartao mapa-mun mundo" id="mundo" aria-labelledby="mundo-h" hidden>
+      <div class="lista-titulo"><h2 id="mundo-h">Mapa-múndi</h2><span id="mundo-info"></span></div>
+      <p class="evo-nota" id="mundo-nota" role="status">Brasileiros votam no exterior para presidente. O TSE publica o resultado por embaixada e consulado, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
+      <button class="botao" id="mundo-abrir" type="button">Carregar o mapa-múndi</button>
+      <button class="botao" id="mundo-tentar" type="button" hidden>Tentar de novo</button>
+      <div id="mundo-corpo" hidden>
+        <ul class="evo-legenda" id="mundo-legenda"></ul>
+        <p class="evo-eixos" id="mundo-ajuda">Passe o mouse (ou toque) num país para ver o nome e o resultado. Clique nele para ver as cidades; o Brasil leva ao mapa dos estados. Amplie com os botões + e −, com a pinça ou com Ctrl (⌘ no Mac) + rolagem.</p>
+        <div class="mapa-svg" id="mundo-svg"></div>
+        <div class="mundo-pais" id="mundo-pais" aria-live="polite" hidden>
+          <div class="lista-titulo"><h3 id="mundo-pais-nome"></h3><button class="botao" id="mundo-pais-fechar" type="button">Fechar</button></div>
+          <p class="evo-eixos" id="mundo-pais-resumo"></p>
+          <div class="evo-tabela"><div class="evo-rolagem" tabindex="0" role="region" aria-label="Candidatos no país escolhido"><table id="mundo-pais-candidatos"></table></div></div>
+          <details class="evo-tabela" open>
+            <summary>Cidades (embaixadas e consulados)</summary>
+            <div class="evo-rolagem" tabindex="0" role="region" aria-label="Cidades do país escolhido"><table id="mundo-pais-cidades"></table></div>
+          </details>
+        </div>
+        <details class="evo-tabela">
+          <summary>Ver os países em lista</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Países com o líder de cada um"><table id="mundo-tabela"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- bloco: mapa do Brasil e painel por região -->
+    <section class="cartao mapa" id="mapa" aria-labelledby="mapa-h" hidden>
+      <div class="lista-titulo"><h2 id="mapa-h">Mapa do Brasil</h2><span id="mapa-info"></span></div>
+      <p class="evo-nota" id="mapa-nota" role="status"></p>
+      <div id="mapa-corpo" hidden>
+        <p class="evo-eixos" id="mapa-explica"></p>
+        <ul class="evo-legenda" id="mapa-legenda"></ul>
+        <div class="mapa-svg" id="mapa-svg"></div>
+        <button class="botao" id="mapa-brasil" type="button" hidden>Ver o Brasil todo</button>
+        <details class="evo-tabela">
+          <summary>Ver os estados em lista</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Estados com o líder de cada um"><table id="mapa-tabela"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="cartao mapa-mun" id="mapa-mun" aria-labelledby="mapa-mun-h" hidden>
+      <div class="lista-titulo"><h2 id="mapa-mun-h">Mapa por município</h2><span id="mapa-mun-info"></span></div>
+      <p class="evo-nota" id="mapa-mun-nota" role="status">O TSE publica um arquivo por cidade, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
+      <button class="botao" id="mapa-mun-abrir" type="button">Carregar o mapa dos municípios</button>
+      <button class="botao" id="mapa-mun-tentar" type="button" hidden>Tentar de novo</button>
+      <div id="mapa-mun-corpo" hidden>
+        <ul class="evo-legenda" id="mapa-mun-legenda"></ul>
+        <p class="evo-eixos" id="mapa-mun-ajuda">Passe o mouse (ou toque) numa cidade para ver o nome. Amplie com os botões + e −, com a pinça ou com Ctrl (⌘ no Mac) + rolagem. Arraste para mover.</p>
+        <div class="mapa-svg" id="mapa-mun-svg"></div>
+      </div>
+    </section>
+
+    <section class="cartao regioes" id="regioes" aria-labelledby="regioes-h" hidden>
+      <div class="lista-titulo"><h2 id="regioes-h">Por região</h2><span id="regioes-info"></span></div>
+      <div class="regioes-grade" id="regioes-grade"></div>
+    </section>
+
+    <!-- bloco: hemiciclo e mais votados -->
+    <section class="cartao hemiciclo" id="hemiciclo" aria-labelledby="hemiciclo-h" hidden>
+      <div class="lista-titulo"><h2 id="hemiciclo-h">Hemiciclo</h2><span id="hemiciclo-info"></span></div>
+      <p class="evo-nota" id="hemiciclo-nota" role="status"></p>
+      <div id="hemiciclo-corpo" hidden>
+        <div class="hemiciclo-svg" id="hemiciclo-svg"></div>
+        <ul class="evo-legenda" id="hemiciclo-legenda"></ul>
+        <details class="evo-tabela">
+          <summary>Ver as cadeiras em tabela</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Cadeiras por partido e bloco"><table id="hemiciclo-tabela"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="cartao" id="maisvotados" aria-labelledby="maisvotados-h" hidden>
+      <div class="lista-titulo"><h2 id="maisvotados-h">Mais votados do Brasil</h2><span id="maisvotados-info"></span></div>
+      <p class="evo-nota" id="maisvotados-nota" role="status"></p>
+      <ol class="mais-votados" id="maisvotados-lista"></ol>
+    </section>
+
+    <!-- bloco: evolução da apuração e replay -->
+    <section class="cartao evo" id="evo" aria-labelledby="evo-h" hidden>
+      <div class="lista-titulo"><h2 id="evo-h">Evolução da apuração</h2><span id="evo-info"></span></div>
+      <p class="evo-nota" id="evo-nota" hidden></p>
+      <div id="evo-corpo" hidden>
+        <p class="evo-eixos">Percentual dos votos válidos de cada candidato, conforme as seções são apuradas.</p>
+        <ul class="evo-legenda" id="evo-legenda"></ul>
+        <div class="evo-grafico" id="evo-grafico"></div>
+        <div class="replay">
+          <button class="botao" id="replay-play" type="button" aria-pressed="false">▶ Reproduzir a apuração</button>
+          <input id="replay-linha" type="range" min="0" max="1" step="1" value="1" aria-label="Linha do tempo da apuração">
+          <span class="replay-hora" id="replay-hora"></span>
+        </div>
+        <ol class="replay-quadro" id="replay-quadro" aria-label="Placar na totalização escolhida" hidden></ol>
+        <details class="evo-tabela">
+          <summary>Ver os números em tabela</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Tabela da evolução da apuração, da totalização mais recente para a mais antiga"><table id="evo-tabela"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="cartao" aria-labelledby="lista-h">
+      <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
+      <ol class="ranking" id="ranking"></ol>
+      <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
+      <div class="exportar" id="exportar" hidden>
+        <span>Exportar o que está na tela:</span>
+        <button class="botao" id="exportar-csv" type="button">CSV (planilha)</button>
+        <button class="botao" id="exportar-json" type="button">JSON</button>
+      </div>
+    </section>
+
+    <!-- bloco: atualizações da apuração -->
+    <section class="cartao feed" id="feed" aria-labelledby="feed-h" hidden>
+      <div class="lista-titulo"><h2 id="feed-h">Atualizações da apuração</h2><span id="feed-info"></span></div>
+      <ol class="feed-lista" id="feed-lista"></ol>
+    </section>
+
+    <!-- bloco: disputas mais apertadas -->
+    <section class="cartao disputas" id="disputas" aria-labelledby="disputas-h" hidden>
+      <div class="lista-titulo"><h2 id="disputas-h">Disputas mais apertadas</h2><span id="disputas-info"></span></div>
+      <p class="evo-nota" id="disputas-nota"></p>
+      <ol class="disputas-lista" id="disputas-lista"></ol>
+      <button class="mais" id="disputas-mais" type="button" hidden>Mostrar todas</button>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <p id="rodape-tempo"></p>
+    <p>Quase em tempo real: os totais vêm do TSE, que publica a cada totalização. Este servidor consulta o TSE a cada 10 s e a página atualiza a cada 5 s; o resto do atraso é do TSE. Confira o horário da última totalização acima.</p>
+    <p>Fonte: <a href="https://resultados.tse.jus.br" rel="noopener">TSE · resultados.tse.jus.br</a>. Percentuais sobre votos válidos, calculados pelo TSE. Só a divulgação oficial do TSE tem valor legal.</p>
+  </footer>
+</div>
+<div class="dica" id="dica" role="tooltip" hidden></div>
+<!-- bloco: busca rápida e comparação (sobreposições) -->
+<dialog class="sobreposicao busca" id="busca" aria-label="Busca rápida">
+  <input id="busca-campo" type="search" role="combobox" aria-expanded="true" aria-controls="busca-lista" aria-autocomplete="list" aria-label="Buscar estado, cidade, cargo ou candidato" placeholder="Buscar estado, cidade, cargo ou candidato" autocomplete="off" spellcheck="false">
+  <ul id="busca-lista" role="listbox" aria-label="Resultados"></ul>
+  <p class="meta" id="busca-ajuda"></p>
+</dialog>
+<dialog class="sobreposicao" id="comparar" aria-labelledby="comparar-h">
+  <form class="sobre-cab" method="dialog"><h2 id="comparar-h">Comparar</h2><button class="botao" type="submit">Fechar</button></form>
+  <p class="meta">À esquerda, o que está na tela. À direita, escolha outro cargo, estado, cidade ou turno.</p>
+  <div class="comparar-grade">
+    <section class="comparar-lado" id="cmp-a" aria-label="Seleção da tela"></section>
+    <section class="comparar-lado" aria-label="Seleção para comparar">
+      <div class="filtros compactos">
+        <label>Cargo <select id="cmp-cargo"></select></label>
+        <label>Território <select id="cmp-uf"></select></label>
+        <label class="cidade" id="cmp-rotulo-cidade" hidden>Cidade
+          <input id="cmp-cidade" type="search" list="cmp-cidades" placeholder="Todo o estado" autocomplete="off" spellcheck="false">
+          <datalist id="cmp-cidades"></datalist>
+        </label>
+        <label>Turno <select id="cmp-turno"><option value="1">1º turno</option><option value="2">2º turno</option></select></label>
+      </div>
+      <div id="cmp-b"></div>
+    </section>
+  </div>
+</dialog>
+<noscript><p style="padding:16px">Esta página precisa de JavaScript.</p></noscript>
+
+</body>
+</html>

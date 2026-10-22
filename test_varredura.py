@@ -214,5 +214,46 @@ class Thread(unittest.TestCase):
         self.assertTrue(v._thread.is_alive() or v._thread is None)
 
 
+class Prioridade(unittest.TestCase):
+    URLS = {c: f"http://tse/{c}" for c in "abcd"}
+
+    def preparar(self):
+        v, relogio = varredor({u: R(200, {"x": 1}, "e") for u in self.URLS.values()})
+        with mock.patch.object(threading.Thread, "start"):   # sem a thread de verdade: o teste chama `passo` à mão
+            return v, relogio, v.pedir("g", fabrica(self.URLS))
+
+    def buscados(self, v, n=4):
+        for _ in range(n):
+            v.passo()
+        return [u[-1] for u, _ in v.buscar.pedidos]
+
+    def test_sem_foco_vale_a_ordem_do_grupo(self):
+        v, _, _ = self.preparar()
+        self.assertEqual(self.buscados(v), list("abcd"))
+
+    def test_foco_fura_a_fila_na_ordem_pedida(self):
+        v, _, grupo = self.preparar()
+        v.priorizar(grupo, ["c", "a", "inexistente"])
+        self.assertEqual(self.buscados(v), list("cabd"))
+
+    def test_nova_lista_troca_a_anterior(self):
+        v, _, grupo = self.preparar()
+        v.priorizar(grupo, ["a", "b"])
+        v.priorizar(grupo, ["d"])
+        self.assertEqual(self.buscados(v), list("dabc"))
+
+    def test_foco_vence_depois_de_foco_s(self):
+        v, relogio, grupo = self.preparar()
+        v.priorizar(grupo, ["d"])
+        relogio.agora += varredura.FOCO_S + 1
+        self.assertEqual(self.buscados(v), list("abcd"))
+
+    def test_o_teto_de_buscas_nao_muda(self):
+        v, _, grupo = self.preparar()
+        v.priorizar(grupo, ["a", "b", "c", "d"])
+        self.assertEqual(v.por_segundo, 2)
+        self.assertEqual(len(self.buscados(v, 10)), 4)           # nada é buscado duas vezes antes do intervalo
+
+
 if __name__ == "__main__":
     unittest.main()

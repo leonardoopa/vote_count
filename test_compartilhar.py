@@ -1,5 +1,7 @@
+import gzip
 import http.client
 import json
+import re
 import struct
 import threading
 import unittest
@@ -280,9 +282,9 @@ class ServidorDeVerdade(unittest.TestCase):
         cls.http.shutdown()
         cls.http.server_close()
 
-    def pedir(self, caminho, metodo="GET"):
+    def pedir(self, caminho, metodo="GET", cabecalhos=None):
         conexao = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=10)
-        conexao.request(metodo, caminho)
+        conexao.request(metodo, caminho, headers=cabecalhos or {})
         resposta = conexao.getresponse()
         corpo = resposta.read()
         conexao.close()
@@ -317,9 +319,43 @@ class ServidorDeVerdade(unittest.TestCase):
 
     def test_service_worker_nunca_guarda_dados(self):
         sw = self.pedir("/sw.js")[1].decode()
-        self.assertIn('pedido.mode !== "navigate"', sw)      # só a abertura da página passa pelo cache
-        self.assertEqual(sw.count(".put("), 1)                 # e a única cópia guardada é a da própria página
-        self.assertIn('.put("/", copia)', sw)
+        self.assertIn('pedido.mode === "navigate" && url.pathname === "/"', sw)      # a abertura da página passa pelo cache
+        self.assertIn(r"const ARQUIVOS_DA_PAGINA = /^\/(estilo\.css|js\/[a-z0-9-]+\.js)$/;", sw)   # e só estes arquivos; /api nunca casa
+        self.assertEqual(sw.count(".put("), 1)                 # a única cópia guardada é da própria página ou de um destes arquivos
+        self.assertIn(".put(chave, copia)", sw)
+
+    def test_estilo_e_scripts_saem_da_pasta_web(self):
+        resposta, corpo = self.pedir("/estilo.css")
+        self.assertEqual((resposta.status, resposta.getheader("Content-Type")), (200, "text/css; charset=utf-8"))
+        self.assertEqual(corpo, (servidor.WEB / "estilo.css").read_bytes())
+        resposta, corpo = self.pedir("/js/base.js")
+        self.assertEqual((resposta.status, resposta.getheader("Content-Type")), (200, "text/javascript; charset=utf-8"))
+        self.assertEqual(corpo, (servidor.WEB / "js" / "base.js").read_bytes())
+        for caminho in ("/js/nao-existe.js", "/js/../servidor.py", "/js/%2e%2e/servidor.py", "/js/Base.js", "/js/base.js/x", "/js/", "/estilo.css.map", "/web/estilo.css", "/web/js/base.js"):
+            with self.subTest(caminho=caminho):
+                self.assertEqual(self.pedir(caminho)[0].status, 404)
+
+    def test_pagina_so_aponta_para_arquivos_que_existem(self):
+        html = self.pedir("/")[1].decode()
+        caminhos = re.findall(r'(?:src|href)="(/(?:js/|estilo)[^"]+)"', html)
+        self.assertGreater(len(caminhos), 10)
+        for caminho in caminhos:
+            with self.subTest(caminho=caminho):
+                self.assertEqual(self.pedir(caminho)[0].status, 200)
+
+    def test_arquivos_da_web_revalidam_com_etag_e_aceitam_gzip(self):
+        resposta, corpo = self.pedir("/js/painel.js")
+        etag = resposta.getheader("ETag")
+        self.assertEqual((resposta.getheader("Cache-Control"), resposta.getheader("Content-Encoding")), ("no-cache", None))
+        igual, vazio = self.pedir("/js/painel.js", cabecalhos={"If-None-Match": etag})
+        self.assertEqual((igual.status, vazio), (304, b""))
+        outro, _ = self.pedir("/js/painel.js", cabecalhos={"If-None-Match": 'W/"outro"'})
+        self.assertEqual(outro.status, 200)
+        zip_, comprimido = self.pedir("/js/painel.js", cabecalhos={"Accept-Encoding": "gzip, deflate"})
+        self.assertEqual((zip_.getheader("Content-Encoding"), zip_.getheader("Vary")), ("gzip", "Accept-Encoding"))
+        self.assertEqual(gzip.decompress(comprimido), corpo)
+        self.assertLess(len(comprimido), len(corpo))
+        self.assertEqual(self.pedir("/geo/sp.json", cabecalhos={"Accept-Encoding": "gzip"})[0].getheader("Content-Encoding"), "gzip")
 
     def test_og_png_pelo_http(self):
         with mock.patch.object(servidor.CACHE, "obter", return_value=(tse([700, 300]), 200, 0)):

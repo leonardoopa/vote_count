@@ -50,6 +50,23 @@ class Pagina(unittest.TestCase):
         usados = set(re.findall(r'\$\("([a-z0-9-]+)"\)', script()))
         self.assertEqual(sorted(usados - ids), [])
 
+    def test_csv_para_planilha_brasileira_e_sem_formula(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node não está instalado")
+        fonte = re.search(r"(function celulaCsv.*?\nfunction montarCsv.*?\n\})", script(), re.S).group(1)
+        candidatos = [
+            {"posicao": 1, "numero": "13", "nome": "ANA LIMA", "partido": "PT", "votos": 1200, "percentual": 37.58, "situacao": ""},
+            {"posicao": 2, "numero": "22", "nome": "=CMD|'/c calc'!A1", "partido": "P;L", "votos": 900, "percentual": 31.8, "situacao": 'Eleito "com aspas"'},
+        ]
+        programa = f"{fonte}\nprocess.stdout.write(JSON.stringify(montarCsv({json.dumps(candidatos)})));"
+        saida = subprocess.run([node, "-e", programa], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(json.loads(saida), (
+            "\ufeffposicao;numero;nome;partido;votos;percentual;situacao\r\n"
+            "1;13;ANA LIMA;PT;1200;37,58;\r\n"
+            "2;22;'=CMD|'/c calc'!A1;\"P;L\";900;31,8;\"Eleito \"\"com aspas\"\"\"\r\n"
+        ))
+
     def test_sintaxe_do_javascript(self):
         node = shutil.which("node")
         if not node:

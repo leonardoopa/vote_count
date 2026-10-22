@@ -145,6 +145,8 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 .mais { margin: 12px 12px 0; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
 .mais:hover { background: var(--wash); }
 .mais[hidden] { display: none; }
+.exportar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 12px 0; color: var(--ink-2); font-size: 0.8125rem; }
+.exportar[hidden] { display: none; }
 .vazio { padding: 24px 12px; color: var(--ink-2); }
 
 .dica {
@@ -356,6 +358,11 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
       <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
       <ol class="ranking" id="ranking"></ol>
       <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
+      <div class="exportar" id="exportar" hidden>
+        <span>Exportar o que está na tela:</span>
+        <button class="botao" id="exportar-csv" type="button">CSV (planilha)</button>
+        <button class="botao" id="exportar-json" type="button">JSON</button>
+      </div>
     </section>
 
     <!-- bloco: atualizações da apuração -->
@@ -797,6 +804,43 @@ function pintarResumo(d) {
 aoRenderizar.push(pintarResumo);
 aoMudarSelecao.push(() => { $("resumo").hidden = true; });
 
+/* Exportar: CSV para planilha brasileira (";" e vírgula decimal, com BOM) e JSON com tudo que está na tela. */
+function celulaCsv(valor) {
+  let texto = String(valor ?? "");
+  if (/^[=+\-@\t\r]/.test(texto)) texto = "'" + texto;   // planilha não executa fórmula vinda de dado
+  return /[";\n\r]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
+}
+
+function montarCsv(candidatos) {
+  const linhas = [["posicao", "numero", "nome", "partido", "votos", "percentual", "situacao"],
+    ...candidatos.map((c) => [c.posicao, c.numero, c.nome, c.partido, c.votos, String(c.percentual).replace(".", ","), c.situacao])];
+  return "﻿" + linhas.map((linha) => linha.map(celulaCsv).join(";")).join("\r\n") + "\r\n";
+}
+
+function baixar(conteudo, tipo, extensao) {
+  const lugar = [estado.cargo, estado.uf, estado.municipio, `${estado.turno}turno`].filter(Boolean).join("-");
+  const agora = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
+  const link = criar("a", { href: url, download: `placar-${lugar}-${agora}.${extensao}` });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$("exportar-csv").addEventListener("click", () => { if (ultimo) baixar(montarCsv(ultimo.candidatos), "text/csv;charset=utf-8", "csv"); });
+$("exportar-json").addEventListener("click", () => {
+  if (!ultimo) return;
+  const tudo = {
+    exportado_em: new Date().toISOString(),
+    selecao: { cargo: estado.cargo, uf: estado.uf, municipio: estado.municipio || null, turno: Number(estado.turno), ambiente: estado.ambiente },
+    placar: ultimo, evolucao: evo, mapa: mapaDados, regioes: regioesDados, disputas: disputasDados,
+  };
+  baixar(JSON.stringify(tudo, null, 2), "application/json;charset=utf-8", "json");
+});
+aoRenderizar.push(() => { $("exportar").hidden = false; });
+aoMudarSelecao.push(() => { $("exportar").hidden = true; });
+
 /* Tela cheia: painel para TV. Mantém a tela acesa enquanto estiver aberto (quando o navegador deixa). */
 let travaDeTela = null;
 async function manterTelaLigada(ligar) {
@@ -1100,7 +1144,7 @@ const MAPA_UFS = {
 
 const INTERVALO_MAPA = 20000;
 const DISPUTAS_INICIAIS = 10;
-let mapaDados = null, mapaMarca = "", mapaSeq = 0, mapaTimer = 0, disputasTodas = false, disputasDados = null;
+let mapaDados = null, regioesDados = null, mapaMarca = "", mapaSeq = 0, mapaTimer = 0, disputasTodas = false, disputasDados = null;
 const temMapa = () => estado.cargo === "presidente" || estado.cargo === "governador";
 const temRegioes = () => estado.cargo === "presidente";
 const temDisputas = () => estado.cargo === "governador" || estado.cargo === "senador";
@@ -1168,6 +1212,7 @@ function legendaDoMapa(d) {
 }
 
 function pintarMapa(d) {
+  mapaDados = d;
   $("mapa").hidden = false;
   const comLider = Object.values(d.ufs).filter((r) => r.situacao === "lider").length;
   $("mapa-info").textContent = `${comLider} de 27 com líder`;
@@ -1210,6 +1255,7 @@ function pintarMapa(d) {
 }
 
 function pintarRegioes(d) {
+  regioesDados = d;
   $("regioes").hidden = false;
   $("regioes-info").textContent = "soma dos estados de cada região";
   $("regioes-grade").replaceChildren(...d.regioes.map((r) => {
@@ -1291,7 +1337,7 @@ aoMudarSelecao.push(() => {
   if (marca === mapaMarca) { destacarUf(); return; }   // só mudou o estado ou a cidade: o mapa é o mesmo
   mapaMarca = marca;
   disputasTodas = false;
-  disputasDados = null;
+  disputasDados = mapaDados = regioesDados = null;
   $("mapa").hidden = !temMapa();
   $("mapa-corpo").hidden = true;
   $("mapa-nota").hidden = false;

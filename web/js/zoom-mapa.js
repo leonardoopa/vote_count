@@ -127,3 +127,30 @@ function ativarZoom(caixa, svg, largura, altura, { maximo = 40, aoParar = () => 
     destruir() { clearTimeout(parou); clearTimeout(lembreteTimer); },
   };
 }
+
+/* Nomes escritos num mapa com zoom: só das formas largas o bastante na tela (então só com zoom) e dentro da janela.
+   `mapa` guarda {zoom, caixas: Map(id -> retângulo no desenho), rotulos: <g>, textos: Map(id -> <text>)}; `nomes` é {id: nome}. */
+function rotularMapa(mapa, nomes, largura, altura, { kMinimo = 2, maximo = 150, minimoPx = 44 } = {}) {
+  const { x, y, k } = mapa.zoom.vista, janelaL = largura / k, janelaA = altura / k, porPixel = mapa.zoom.unidadesPorPixel();
+  const querem = [];
+  if (k >= kMinimo) {
+    for (const [id, c] of mapa.caixas) {
+      const nome = nomes[id], px = c.width / porPixel;
+      if (!nome || px < minimoPx || px < nome.length * 6.4 + 8) continue;    // o nome não cabe dentro da forma
+      if (c.x + c.width < x || c.x > x + janelaL || c.y + c.height < y || c.y > y + janelaA) continue;
+      querem.push([id, c, nome]);
+    }
+  }
+  const mostrar = new Set(querem.sort((a, b) => b[1].width - a[1].width).slice(0, maximo).map(([id]) => id));
+  for (const [id, texto] of mapa.textos) if (!mostrar.has(id)) { texto.remove(); mapa.textos.delete(id); }
+  for (const [id, c, nome] of querem) {
+    if (!mostrar.has(id)) continue;
+    let texto = mapa.textos.get(id);
+    if (!texto) {
+      texto = criarSvg("text", { x: c.x + c.width / 2, y: c.y + c.height / 2 }, nome);
+      mapa.textos.set(id, texto);
+      mapa.rotulos.append(texto);
+    }
+    texto.style.fontSize = `${12 * porPixel}px`;     // 12 px na tela, qualquer que seja o zoom
+  }
+}

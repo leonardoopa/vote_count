@@ -86,33 +86,9 @@ function pintarMapaMun() {
   atualizarRotulosMun();
 }
 
-/* Nomes escritos no mapa: só das cidades cuja forma já é larga o bastante na tela (então só com zoom) e que cabem na janela. */
 function atualizarRotulosMun() {
   const mapa = mun.mapa;
-  if (!mapa) return;
-  const { x, y, k } = mapa.zoom.vista, geo = munGeo[mapa.uf], nomes = geo.n || {};
-  const largura = geo.w / k, altura = geo.h / k, porPixel = mapa.zoom.unidadesPorPixel();
-  const querem = [];
-  if (k >= 2) {
-    for (const [ibge, c] of mapa.caixas) {
-      const nome = nomes[ibge], px = c.width / porPixel;
-      if (!nome || px < ROTULO_MIN_PX || px < nome.length * 6.4 + 8) continue;    // o nome não cabe dentro da cidade
-      if (c.x + c.width < x || c.x > x + largura || c.y + c.height < y || c.y > y + altura) continue;
-      querem.push([ibge, c, nome]);
-    }
-  }
-  const mostrar = new Set(querem.sort((a, b) => b[1].width - a[1].width).slice(0, ROTULOS_MAXIMO_MUN).map(([ibge]) => ibge));
-  for (const [ibge, texto] of mapa.textos) if (!mostrar.has(ibge)) { texto.remove(); mapa.textos.delete(ibge); }
-  for (const [ibge, c, nome] of querem) {
-    if (!mostrar.has(ibge)) continue;
-    let texto = mapa.textos.get(ibge);
-    if (!texto) {
-      texto = criarSvg("text", { x: c.x + c.width / 2, y: c.y + c.height / 2 }, nome);
-      mapa.textos.set(ibge, texto);
-      mapa.rotulos.append(texto);
-    }
-    texto.style.fontSize = `${12 * porPixel}px`;     // 12 px na tela, qualquer que seja o zoom
-  }
+  if (mapa) rotularMapa(mapa, munGeo[mapa.uf].n || {}, munGeo[mapa.uf].w, munGeo[mapa.uf].h, { maximo: ROTULOS_MAXIMO_MUN, minimoPx: ROTULO_MIN_PX });
 }
 
 /* As cidades da área visível, as mais perto do centro primeiro: o servidor busca essas antes das outras. */

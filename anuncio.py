@@ -2,7 +2,9 @@
 
 Tudo vem de variáveis de ambiente (veja .env.example) e é lido uma vez, na partida. Sem
 ANUNCIO_TEXTO não há faixa. A página mostra o texto como texto puro (nunca como HTML), com o
-rótulo "Publicidade" sempre ao lado, e abre o link numa aba nova, marcado como patrocinado.
+rótulo "Publicidade" sempre ao lado, e abre o link numa aba nova, marcado como patrocinado. A imagem é opcional
+(ANUNCIO_IMAGEM, um endereço http ou https): quem visita a página baixa a imagem direto desse endereço, e o texto fica
+sempre junto dela, para quem não a vê.
 """
 import os
 import sys
@@ -45,6 +47,12 @@ def ler(ambiente):
             anuncio["link"] = link
         else:
             _avisar("ANUNCIO_LINK ignorado: use um endereço http:// ou https://. O anúncio sai sem link.")
+    imagem = ambiente.get("ANUNCIO_IMAGEM", "").strip()
+    if imagem:
+        if link_valido(imagem):
+            anuncio["imagem"] = imagem
+        else:
+            _avisar("ANUNCIO_IMAGEM ignorado: use um endereço http:// ou https://. O anúncio sai sem imagem.")
     return anuncio
 
 

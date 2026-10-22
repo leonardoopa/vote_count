@@ -245,7 +245,9 @@ Na página (só presidente), o card **Mapa-múndi** mostra os países coloridos 
 
 ### Anúncio no topo
 
-`GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link"}` (o `link` só vem se for válido). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`) e `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`. A configuração é lida na partida: mudou, reinicie.
+`GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link", "imagem"}` (`link` e `imagem` só vêm se forem válidos). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`), `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível) e `ANUNCIO_IMAGEM` (opcional, também `http://` ou `https://`). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`; com link, a faixa toda (imagem e texto) é um link só.
+
+Com `ANUNCIO_IMAGEM`, o banner aparece acima do texto, na largura da página (cabe até uns 970x90; a altura máxima é 160 px e a imagem nunca é cortada). O texto continua logo abaixo, sempre com o rótulo, para quem não vê a imagem. Se a imagem não carregar, ela some e fica a faixa de texto. **Atenção:** quem visita a página baixa a imagem direto do endereço informado (sem enviar o `Referer`), então use um endereço seu, e não de um serviço que registre acessos. A configuração é lida na partida: mudou, reinicie.
 
 ## Regras de acesso do TSE
 

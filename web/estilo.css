@@ -219,10 +219,15 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color
 .feed-lista .destaque { font-weight: 600; }
 
 /* ===== bloco: mapa, regiões, disputas e anúncio ===== */
-.anuncio { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 16px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 0.875rem; }
+.anuncio { display: flex; flex-direction: column; gap: 6px; margin: 0 0 20px; padding: 10px 16px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .anuncio[hidden] { display: none; }
 .anuncio-rotulo { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
-.anuncio a { color: var(--ink); text-underline-offset: 2px; }
+.anuncio-conteudo { display: flex; flex-direction: column; gap: 8px; color: var(--ink); text-decoration: none; }
+.anuncio-texto { font-size: 1.0625rem; font-weight: 600; line-height: 1.35; text-underline-offset: 3px; }
+.anuncio a.anuncio-conteudo:hover .anuncio-texto, .anuncio a.anuncio-conteudo:focus-visible .anuncio-texto { text-decoration: underline; }
+.anuncio a.anuncio-conteudo:focus-visible { outline: 2px solid var(--series); outline-offset: 4px; border-radius: 6px; }
+.anuncio-imagem { display: block; width: 100%; max-width: 970px; max-height: 160px; margin: 0 auto; object-fit: contain; border-radius: 8px; background: var(--wash); }
+.anuncio.com-imagem .anuncio-texto { font-size: 0.9375rem; font-weight: 500; color: var(--ink-2); }
 .mapa, .regioes, .disputas, .hemiciclo, #maisvotados, .mapa-mun { margin-bottom: 12px; }
 .mapa-mun .botao[hidden] { display: none; }
 /* Mapa por município: dá zoom (zoom-mapa.js). O traço é em pixels da tela, então fica fino em qualquer ampliação. */

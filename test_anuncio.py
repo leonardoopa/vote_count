@@ -53,6 +53,27 @@ class Ler(unittest.TestCase):
                 self.assertNotIn("link", corpo)
                 self.assertIn("ANUNCIO_LINK ignorado", aviso)
 
+    def test_imagem_vai_junto_com_o_texto(self):
+        corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_IMAGEM=" https://cdn.exemplo.com.br/banner.png?v=2 ")
+        self.assertEqual(corpo, {"ativo": True, "texto": "Oferta", "rotulo": "Publicidade", "imagem": "https://cdn.exemplo.com.br/banner.png?v=2"})
+        self.assertEqual(aviso, "")
+
+    def test_tudo_junto(self):
+        corpo, _ = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_LINK="https://exemplo.com.br", ANUNCIO_ROTULO="Patrocinado", ANUNCIO_IMAGEM="http://127.0.0.1:8901/b.svg")
+        self.assertEqual(corpo, {"ativo": True, "texto": "Oferta", "rotulo": "Patrocinado", "link": "https://exemplo.com.br", "imagem": "http://127.0.0.1:8901/b.svg"})
+
+    def test_imagem_sem_texto_nao_ha_faixa(self):
+        self.assertEqual(ler(ANUNCIO_IMAGEM="https://exemplo.com/b.png"), ({"ativo": False}, ""))
+
+    def test_imagem_ruim_sai_sem_imagem_e_com_aviso_mas_o_texto_fica(self):
+        for imagem in ("javascript:alert(1)", "data:image/png;base64,AAAA", "file:///etc/passwd", "ftp://exemplo.com/b.png", "//exemplo.com/b.png",
+                       "/banner.png", "https://", "https://exemplo .com/b.png", "https://exemplo.com/" + "a" * 300):
+            with self.subTest(imagem=imagem):
+                corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_IMAGEM=imagem)
+                self.assertTrue(corpo["ativo"])
+                self.assertNotIn("imagem", corpo)
+                self.assertIn("ANUNCIO_IMAGEM ignorado", aviso)
+
     def test_rotulo_invalido_volta_ao_padrao(self):
         self.assertEqual(ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ROTULO="x" * 40)[0]["rotulo"], "Publicidade")
         self.assertEqual(ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ROTULO="")[0]["rotulo"], "Publicidade")

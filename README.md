@@ -203,6 +203,10 @@ Para o histórico sobreviver a um reinício, defina `HISTORICO_DIR` (no Docker j
 
 Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar_mapa.py` e embutida na página (o servidor nunca acessa o IBGE). Para refazer: `python3 tools/gerar_mapa.py` e colar a saída no lugar de `MAPA_UFS` em `index.html`.
 
+### Busca rápida
+
+`GET /api/busca?q=campinas` procura cidades de **todas** as UFs pelo nome, sem diferenciar acento nem caixa (aceita `cargo` e `ambiente`; só entram UFs válidas para o cargo). Devolve até 10 em `{"cidades": [{"uf", "codigo", "nome", "capital"}]}`, com quem começa pelo termo primeiro. Termos de menos de 2 letras dão lista vazia e mais de 40 caracteres dão `400`. A lista vem do arquivo de cidades que o servidor já guarda por 6 h: a busca não faz consulta nova ao TSE. Na página, a busca abre com `/` ou `Ctrl`/`⌘`+`K` e também acha cargos, estados e candidatos do placar que está na tela.
+
 ### Anúncio no topo
 
 `GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link"}` (o `link` só vem se for válido). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`) e `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`. A configuração é lida na partida: mudou, reinicie.

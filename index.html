@@ -161,6 +161,14 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 
 dialog.sobreposicao { width: min(1040px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--page); color: var(--ink); }
 dialog.sobreposicao::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog.busca { width: min(560px, calc(100vw - 24px)); margin: 10vh auto auto; padding: 12px; }
+.busca input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; }
+.busca ul { list-style: none; margin: 8px 0 0; padding: 0; max-height: 50vh; overflow: auto; }
+.busca li[role=option] { display: flex; justify-content: space-between; gap: 12px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.busca li[aria-selected=true] { background: var(--wash); box-shadow: inset 0 0 0 2px var(--series); }
+.busca li.grupo { padding: 8px 10px 2px; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.busca .meta { margin: 8px 4px 0; }
+kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--ink-2); font: inherit; font-size: 0.75rem; }
 .sobre-cab { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 8px; }
 .comparar-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .comparar-lado { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
@@ -291,6 +299,7 @@ dialog.sobreposicao::backdrop { background: rgba(0, 0, 0, 0.55); }
     <div class="cabecalho-direita">
       <div class="selos" id="selos" aria-live="polite"></div>
       <span class="selo ao-vivo" id="ao-vivo" role="status" hidden></span>
+      <button class="botao" id="abrir-busca" type="button" aria-keyshortcuts="/ Control+K Meta+K">Buscar <kbd>/</kbd></button>
       <button class="botao" id="abrir-comparar" type="button">Comparar</button>
       <button class="botao" id="tela-cheia" type="button" hidden>Tela cheia</button>
     </div>
@@ -408,6 +417,11 @@ dialog.sobreposicao::backdrop { background: rgba(0, 0, 0, 0.55); }
 </div>
 <div class="dica" id="dica" role="tooltip" hidden></div>
 <!-- bloco: busca rápida e comparação (sobreposições) -->
+<dialog class="sobreposicao busca" id="busca" aria-label="Busca rápida">
+  <input id="busca-campo" type="search" role="combobox" aria-expanded="true" aria-controls="busca-lista" aria-autocomplete="list" aria-label="Buscar estado, cidade, cargo ou candidato" placeholder="Buscar estado, cidade, cargo ou candidato" autocomplete="off" spellcheck="false">
+  <ul id="busca-lista" role="listbox" aria-label="Resultados"></ul>
+  <p class="meta" id="busca-ajuda"></p>
+</dialog>
 <dialog class="sobreposicao" id="comparar" aria-labelledby="comparar-h">
   <form class="sobre-cab" method="dialog"><h2 id="comparar-h">Comparar</h2><button class="botao" type="submit">Fechar</button></form>
   <p class="meta">À esquerda, o que está na tela. À direita, escolha outro cargo, estado, cidade ou turno.</p>
@@ -996,6 +1010,127 @@ $("cmp-turno").addEventListener("change", (e) => mudouLadoB("turno", e.target.va
 $("cmp-cidade").addEventListener("input", escolherCidadeDoLadoB);
 $("cmp-cidade").addEventListener("change", escolherCidadeDoLadoB);
 aoRenderizar.push(() => { if ($("comparar").open) pintarLadoA(); });
+
+/* Busca rápida ("/" ou Ctrl/⌘+K). Cargos, estados e candidatos filtram na hora; as cidades vêm do servidor (lista já em cache). */
+let buscaItens = [], buscaAtivo = 0, buscaSeq = 0, buscaTimer = 0, buscaCidades = [];
+
+function irParaCidade({ uf, codigo }) {
+  estado.uf = uf;
+  estado.municipio = codigo;
+  estado.top = TOP_INICIAL;
+  ultimo = null;
+  sincronizarFiltros();
+  carregar();
+  atualizarCidades();   // carrega a lista da UF e confere se a cidade existe lá
+  avisar(aoMudarSelecao);
+}
+
+function destacarCandidato(posicao) {
+  const alvo = $("ranking").children[posicao - 1];
+  if (!alvo) return;
+  alvo.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  alvo.focus({ preventScroll: true });
+}
+
+function resultadosLocais(termo) {
+  const alvo = semAcento(termo);
+  if (!alvo) return { cargos: [], estados: [], candidatos: [] };
+  const grupo = (nome, itens) => itens.slice(0, 6).map((item) => ({ grupo: nome, ...item }));
+  return {
+    cargos: grupo("Cargos", Object.entries(CARGOS).filter(([, nome]) => semAcento(nome).includes(alvo))
+      .map(([codigo, nome]) => ({ rotulo: nome, detalhe: codigo === estado.cargo ? "cargo atual" : "", abrir: () => trocou("cargo", codigo) }))),
+    estados: grupo("Estados", ufsDoCargo(estado.cargo).filter((uf) => uf === alvo || semAcento(uf === "br" ? "Brasil" : UFS[uf]).includes(alvo))
+      .map((uf) => ({ rotulo: uf === "br" ? "Brasil" : UFS[uf], detalhe: uf === "br" ? "" : uf.toUpperCase(), abrir: () => trocou("uf", uf) }))),
+    candidatos: grupo("Candidatos", ultimo ? ultimo.candidatos.filter((c) => semAcento(`${c.nome} ${c.partido} ${c.numero}`).includes(alvo))
+      .map((c) => ({ rotulo: c.nome, detalhe: `${c.partido} · ${pct(c.percentual)}`, abrir: () => destacarCandidato(c.posicao) })) : []),
+  };
+}
+
+function pintarBusca() {
+  const termo = $("busca-campo").value;
+  const locais = resultadosLocais(termo);
+  buscaItens = [...locais.cargos, ...locais.estados, ...buscaCidades, ...locais.candidatos];
+  buscaAtivo = Math.min(buscaAtivo, Math.max(0, buscaItens.length - 1));
+  const lista = $("busca-lista");
+  lista.replaceChildren();
+  let grupoAtual = "";
+  buscaItens.forEach((item, i) => {
+    if (item.grupo !== grupoAtual) { grupoAtual = item.grupo; lista.append(criar("li", { role: "presentation", class: "grupo" }, grupoAtual)); }
+    const opcao = criar("li", { role: "option", id: `busca-op-${i}`, "aria-selected": String(i === buscaAtivo) }, criar("span", {}, item.rotulo), criar("span", { class: "meta" }, item.detalhe));
+    opcao.addEventListener("pointerdown", (e) => { e.preventDefault(); escolherNaBusca(i); });
+    lista.append(opcao);
+  });
+  $("busca-campo").setAttribute("aria-activedescendant", buscaItens.length ? `busca-op-${buscaAtivo}` : "");
+  $("busca-ajuda").textContent = !termo.trim() ? "Digite um estado, uma cidade, um cargo ou um candidato."
+    : buscaItens.length ? "↑ ↓ para escolher · Enter para abrir · Esc para fechar" : "Nada encontrado.";
+  const ativa = $(`busca-op-${buscaAtivo}`);
+  if (ativa) ativa.scrollIntoView({ block: "nearest" });
+}
+
+function buscarCidadesNoServidor(termo) {
+  clearTimeout(buscaTimer);
+  const minha = ++buscaSeq;
+  buscaCidades = [];
+  if (semAcento(termo).length < 2) return;
+  const daLista = (c) => ({ grupo: "Cidades", rotulo: c.nome, detalhe: UFS[c.uf], abrir: () => irParaCidade(c) });
+  buscaTimer = setTimeout(async () => {
+    let achadas;
+    try {
+      const q = new URLSearchParams({ cargo: estado.cargo, ambiente: estado.ambiente, q: termo.trim() });
+      const resposta = await fetch("/api/busca?" + q, { cache: "no-store" });
+      const corpo = await resposta.json();
+      if (!resposta.ok) throw new Error("sem lista");
+      achadas = corpo.cidades;
+    } catch {   // servidor sem a lista do TSE: ainda dá para achar entre as cidades do estado que está na tela
+      achadas = cidades.filter((c) => semAcento(c.nome).includes(semAcento(termo))).slice(0, 10).map((c) => ({ ...c, uf: estado.uf }));
+    }
+    if (minha !== buscaSeq) return;
+    achadas.sort((a, b) => (b.uf === estado.uf) - (a.uf === estado.uf));   // as do estado que está na tela vêm primeiro
+    buscaCidades = achadas.map(daLista);
+    pintarBusca();
+  }, 180);
+}
+
+function escolherNaBusca(i) {
+  const item = buscaItens[i];
+  if (!item) return;
+  $("busca").close();
+  item.abrir();
+}
+
+function abrirBusca() {
+  if (document.querySelector("dialog[open]")) return;
+  $("busca-campo").value = "";
+  buscaAtivo = 0;
+  buscaCidades = [];
+  buscaSeq++;
+  pintarBusca();
+  $("busca").showModal();
+  $("busca-campo").focus();
+}
+
+$("abrir-busca").addEventListener("click", abrirBusca);
+$("busca").addEventListener("click", (e) => { if (e.target === $("busca")) $("busca").close(); });   // clicou fora
+$("busca-campo").addEventListener("input", () => { buscaAtivo = 0; buscarCidadesNoServidor($("busca-campo").value); pintarBusca(); });
+$("busca-campo").addEventListener("keydown", (e) => {
+  const n = buscaItens.length;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (n) { buscaAtivo = (buscaAtivo + (e.key === "ArrowDown" ? 1 : n - 1)) % n; pintarBusca(); }
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    escolherNaBusca(buscaAtivo);
+  }
+});
+document.addEventListener("keydown", (e) => {
+  const alvo = e.target;
+  const digitando = alvo instanceof HTMLElement && (alvo.isContentEditable || ["INPUT", "SELECT", "TEXTAREA"].includes(alvo.tagName));
+  const atalhoK = (e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey);
+  if (atalhoK || (e.key === "/" && !digitando && !e.metaKey && !e.ctrlKey && !e.altKey)) {
+    e.preventDefault();
+    abrirBusca();
+  }
+});
 
 /* Tela cheia: painel para TV. Mantém a tela acesa enquanto estiver aberto (quando o navegador deixa). */
 let travaDeTela = null;

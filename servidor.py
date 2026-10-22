@@ -10,17 +10,20 @@ de pessoas na página (o TSE bloqueia o IP que passar do limite).
 """
 import argparse
 import json
+import os
 import signal
 import threading
 import time
 from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import anuncio
+import compartilhar
 import contador
 import historico
+import imagem
 import mapa
 
 PAGINA = Path(__file__).with_name("index.html")
@@ -72,6 +75,12 @@ class Cache:
             if agora >= entrada.valido_ate:
                 self._atualizar(url, entrada, agora, ttl)
             return entrada.dados, entrada.status, entrada.verificado_em
+
+    def espiar(self, url):
+        """Dados já guardados para a URL. Não consulta o TSE nem muda a ordem de uso das entradas."""
+        with self._trava:
+            entrada = self._entradas.get(url)
+        return entrada.dados if entrada else None
 
     def _limite_404(self, agora):
         while self._erros_404 and agora - self._erros_404[0] > 60:
@@ -430,27 +439,155 @@ def busca_rapida(consulta):
 ROTAS_API["/api/busca"] = busca_rapida
 
 
+# ---- compartilhar e app instalável ----
+
+URL_PUBLICA = os.environ.get("URL_PUBLICA", "")  # ex.: https://votos.exemplo.com.br; sem ela, vale o Host da requisição
+MARCA_DO_HEAD = "<!-- bloco: pwa e prévia de compartilhamento (head) -->"
+SERVICE_WORKER = Path(__file__).with_name("sw.js")
+TTL_CARTAO = 60
+MAX_CARTOES = 64
+_CARTOES = OrderedDict()  # chave da seleção + totalização -> (vale até, PNG)
+_TRAVA_CARTOES = threading.Lock()
+_ICONES = {}
+MANIFESTO = {
+    "name": compartilhar.NOME_DO_SITE, "short_name": "Votos 2026", "lang": "pt-BR", "start_url": "/", "scope": "/",
+    "description": compartilhar.DESCRICAO_PADRAO, "display": "standalone",
+    "background_color": "#0d0d0d", "theme_color": "#0d0d0d",
+    "icons": [
+        {"src": "/icone-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png"},
+        {"src": "/icone-512-mascara.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    ],
+}
+
+
+def selecao_da_consulta(consulta):
+    """(cargo, uf, ambiente, turno, município) de uma query válida, ou None."""
+    try:
+        cargo, uf, ambiente, turno, _ = validar(consulta)
+        return cargo, uf, ambiente, turno, validar_municipio(consulta, uf)
+    except ValueError:
+        return None
+
+
+def consulta_canonica(cargo, uf, ambiente, turno, municipio):
+    """A query do link, só com valores já validados e sempre na mesma ordem."""
+    campos = [("cargo", cargo), ("uf", uf), ("turno", turno)]
+    if ambiente != "oficial":
+        campos.append(("ambiente", ambiente))
+    if municipio:
+        campos.append(("municipio", municipio))
+    return urlencode(campos)
+
+
+def nome_da_cidade(ambiente, cargo, turno, uf, municipio):
+    """Nome da cidade se a lista do TSE já está no cache (nunca consulta o TSE para isso)."""
+    config = CACHE.espiar(contador.url_municipios(ambiente, cargo, turno))
+    achada = next((m for m in contador.municipios(config, uf) if m["codigo"] == municipio), None) if config else None
+    return achada["nome"] if achada else None
+
+
+def pagina(consulta, cabecalhos):
+    """index.html com as meta tags da seleção do link (WhatsApp, X e outros leem o HTML, não o JavaScript)."""
+    base = compartilhar.base_publica(URL_PUBLICA, cabecalhos)
+    selecao = selecao_da_consulta(consulta) if "cargo" in consulta or "uf" in consulta else None
+    if selecao is None:
+        meta = compartilhar.meta_tags(base, "")
+    else:
+        cargo, uf, ambiente, turno, municipio = selecao
+        cidade = nome_da_cidade(ambiente, cargo, turno, uf, municipio) if municipio else None
+        dados = CACHE.espiar(contador.montar_url(ambiente, cargo, uf, turno, municipio=municipio or None))
+        descricao = compartilhar.descricao_do_placar(resumir(dados, 3) if dados else None)
+        meta = compartilhar.meta_tags(base, consulta_canonica(*selecao), compartilhar.titulo_da_selecao(cargo, uf, turno, cidade), descricao)
+    return PAGINA.read_text(encoding="utf-8").replace(MARCA_DO_HEAD, meta, 1).encode()
+
+
+def cartao_do_placar(consulta, cabecalhos=None):
+    """(status, tipo, corpo, cabeçalhos extras) da imagem de prévia. Sem dados ainda, a imagem só traz o título."""
+    selecao = selecao_da_consulta(consulta)
+    if selecao is None:
+        return 400, "text/plain; charset=utf-8", b"selecao invalida", {}
+    cargo, uf, ambiente, turno, municipio = selecao
+    cidade = None
+    if municipio:
+        # só código que o TSE lista para esta UF vira URL (evita 404 em série, como em `resultado`)
+        lista, falha = cidades_da_uf(ambiente, cargo, turno, uf)
+        cidade = next((m for m in lista or [] if m["codigo"] == municipio), None)
+        if falha or cidade is None:
+            return 400, "text/plain; charset=utf-8", b"municipio invalido", {}
+    dados, _, _ = CACHE.obter(contador.montar_url(ambiente, cargo, uf, turno, municipio=municipio or None))
+    resumo = resumir(dados, compartilhar.MAX_CANDIDATOS_NA_IMAGEM) if dados else None
+    chave = (selecao, resumo["ultima_totalizacao"] if resumo else "", resumo["secoes"]["apuradas"] if resumo else 0, resumo["final"] if resumo else False)
+    with _TRAVA_CARTOES:
+        agora = time.time()
+        pronto = _CARTOES.get(chave)
+        if pronto is None or pronto[0] < agora:
+            titulo = compartilhar.titulo_da_selecao(cargo, uf, turno, cidade["nome"] if cidade else None)
+            pronto = _CARTOES[chave] = (agora + TTL_CARTAO, compartilhar.cartao(titulo, resumo, ambiente))
+            while len(_CARTOES) > MAX_CARTOES:
+                _CARTOES.popitem(last=False)
+        _CARTOES.move_to_end(chave)
+    return 200, "image/png", pronto[1], {"Cache-Control": "public, max-age=60"}
+
+
+def icone(lado, mascara=False):
+    def rota(consulta, cabecalhos=None):
+        if (lado, mascara) not in _ICONES:
+            _ICONES[(lado, mascara)] = imagem.icone(lado, mascara)
+        return 200, "image/png", _ICONES[(lado, mascara)], {"Cache-Control": "public, max-age=86400"}
+    return rota
+
+
+def arquivo_estatico(caminho, tipo):
+    def rota(consulta, cabecalhos=None):
+        return 200, tipo, caminho.read_bytes(), {}
+    return rota
+
+
+# Rotas que não são JSON: caminho -> função(consulta, cabeçalhos) que devolve (status, tipo, corpo, cabeçalhos extras).
+ROTAS_ARQUIVO = {
+    "/og.png": cartao_do_placar,
+    "/icone-192.png": icone(192),
+    "/icone-512.png": icone(512),
+    "/icone-512-mascara.png": icone(512, mascara=True),
+    "/manifest.webmanifest": lambda consulta, cabecalhos=None: (
+        200, "application/manifest+json; charset=utf-8", json.dumps(MANIFESTO, ensure_ascii=False).encode(), {"Cache-Control": "public, max-age=3600"}),
+    "/sw.js": arquivo_estatico(SERVICE_WORKER, "text/javascript; charset=utf-8"),
+}
+
+
 class Handler(BaseHTTPRequestHandler):
-    def _enviar(self, status, tipo, corpo):
+    def _enviar(self, status, tipo, corpo, extras=None):
         self.send_response(status)
         self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(corpo)))
-        self.send_header("Cache-Control", "no-store")
+        extras = extras or {}
+        if "Cache-Control" not in extras:
+            self.send_header("Cache-Control", "no-store")
+        for nome, valor in extras.items():
+            self.send_header(nome, valor)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
-        self.wfile.write(corpo)
+        if self.command != "HEAD":
+            self.wfile.write(corpo)
 
     def do_GET(self):
         url = urlparse(self.path)
+        consulta = parse_qs(url.query)
         if url.path == "/":
-            self._enviar(200, "text/html; charset=utf-8", PAGINA.read_bytes())
+            self._enviar(200, "text/html; charset=utf-8", pagina(consulta, self.headers))
         elif url.path in ROTAS_API:
-            status, corpo = ROTAS_API[url.path](parse_qs(url.query))
+            status, corpo = ROTAS_API[url.path](consulta)
             self._enviar(status, "application/json; charset=utf-8", json.dumps(corpo, ensure_ascii=False).encode())
+        elif url.path in ROTAS_ARQUIVO:
+            status, tipo, corpo, extras = ROTAS_ARQUIVO[url.path](consulta, self.headers)
+            self._enviar(status, tipo, corpo, extras)
         elif url.path == "/saude":
             self._enviar(200, "text/plain; charset=utf-8", b"ok")
         else:
             self._enviar(404, "text/plain; charset=utf-8", b"nao encontrado")
+
+    do_HEAD = do_GET  # mesmos cabeçalhos, sem corpo (alguns verificadores de link usam HEAD)
 
     def log_request(self, code="-", size="-"):  # sem log das consultas normais (a página consulta a cada 15s)
         if str(code).isdigit() and int(code) >= 400:

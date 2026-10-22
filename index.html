@@ -212,6 +212,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color
 .dica .evo-dica-linha svg { flex: none; }
 .botao { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; font-size: 0.875rem; cursor: pointer; }
 .botao:hover { background: var(--wash); }
+.botao[aria-pressed="true"] { border-color: var(--series); }
 .replay { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0 4px; }
 .replay input[type=range] { flex: 1 1 12rem; min-width: 0; accent-color: var(--series); }
 .replay-hora { color: var(--ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
@@ -299,6 +300,7 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color
     <div class="cabecalho-direita">
       <div class="selos" id="selos" aria-live="polite"></div>
       <span class="selo ao-vivo" id="ao-vivo" role="status" hidden></span>
+      <button class="botao" id="alertas" type="button" aria-pressed="false" hidden>Alertas: desligados</button>
       <button class="botao" id="abrir-busca" type="button" aria-keyshortcuts="/ Control+K Meta+K">Buscar <kbd>/</kbd></button>
       <button class="botao" id="abrir-comparar" type="button">Comparar</button>
       <button class="botao" id="tela-cheia" type="button" hidden>Tela cheia</button>
@@ -470,6 +472,7 @@ const normalizarPartido = (partido) => partido.normalize("NFD").replace(/[̀-ͯ]
 const corDoPartido = (partido) => `var(--p-${COR_PARTIDO[normalizarPartido(partido)] || "outros"})`;
 
 const ATUALIZAR_A_CADA = 5000;
+const ATUALIZAR_EM_SEGUNDO_PLANO = 30000;   // só com os alertas ligados
 const TOP_INICIAL = 15, TOP_PASSO = 30, TOP_MAXIMO = 100;
 
 const $ = (id) => document.getElementById(id);
@@ -505,7 +508,7 @@ const consultaSelecao = (extra = {}) => {
   return q;
 };
 
-let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0, semConexao = false;
+let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0, semConexao = false, alertasLigados = false;
 let cidades = [];            // cidades da UF escolhida: [{codigo, nome, capital}]
 let sequenciaCidades = 0;
 
@@ -674,6 +677,7 @@ function linha(c, lider, comDica = true) {
 function renderizar(d) {
   mostrarSelos(d);
   $("subtitulo").textContent = titulo();
+  document.title = `${titulo()} · Contador de votos 2026`;
 
   $("heroi-valor").textContent = pct(d.secoes.percentual);
   $("medidor-barra").style.width = d.secoes.percentual + "%";
@@ -746,7 +750,7 @@ async function carregar() {
   } finally {
     if (minha === sequencia) {
       $("painel").classList.remove("carregando");
-      if (!document.hidden) temporizador = setTimeout(carregar, ATUALIZAR_A_CADA);
+      if (!document.hidden || alertasLigados) temporizador = setTimeout(carregar, document.hidden ? ATUALIZAR_EM_SEGUNDO_PLANO : ATUALIZAR_A_CADA);
     }
   }
 }
@@ -822,7 +826,7 @@ $("mais").addEventListener("click", () => {
   carregar();
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) clearTimeout(temporizador);
+  if (document.hidden) { if (!alertasLigados) clearTimeout(temporizador); }   // com alertas, segue no ritmo lento
   else carregar();
 });
 setInterval(atualizarTempo, 1000);
@@ -1131,6 +1135,87 @@ document.addEventListener("keydown", (e) => {
     abrirBusca();
   }
 });
+
+/* App instalável (PWA) e alertas. O service worker só guarda a página, nunca os dados. */
+if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
+  navigator.serviceWorker.register("/sw.js").catch(() => { /* sem app instalável: a página funciona igual */ });
+}
+
+/* Alertas: avisam quando a apuração começa e quando o resultado fica definido. Funcionam com a página aberta,
+   também em segundo plano (a página volta a buscar a cada 30 s). Sem servidor de push, fechar a aba para os alertas. */
+const CHAVE_ALERTAS = "contador-alertas";
+let alertaAntes = null;   // o que a página viu na leitura anterior da mesma seleção
+
+function preferenciaDeAlertas(novo) {
+  try {
+    if (novo === undefined) return localStorage.getItem(CHAVE_ALERTAS) === "1";
+    localStorage.setItem(CHAVE_ALERTAS, novo ? "1" : "0");
+  } catch { /* sem armazenamento: vale só nesta visita */ }
+  return novo;
+}
+
+function pintarBotaoDeAlertas() {
+  const botao = $("alertas");
+  botao.textContent = alertasLigados ? "Alertas: ligados" : "Alertas: desligados";
+  botao.setAttribute("aria-pressed", String(alertasLigados));
+}
+
+async function alternarAlertas() {
+  if (alertasLigados) {
+    alertasLigados = false;
+    preferenciaDeAlertas(false);
+  } else {
+    let permissao = Notification.permission;
+    if (permissao === "default") permissao = await Notification.requestPermission();
+    if (permissao !== "granted") {
+      mostrarAviso("O navegador não deixou o site enviar notificações. Libere nas configurações do navegador para ligar os alertas.");
+      return;
+    }
+    alertasLigados = true;
+    alertaAntes = null;
+    preferenciaDeAlertas(true);
+    if (!document.hidden) carregar();
+  }
+  pintarBotaoDeAlertas();
+}
+
+async function mostrarAlerta(tituloDoAlerta, texto) {
+  const opcoes = { body: texto, icon: "/icone-192.png", badge: "/icone-192.png", tag: "contador-votos" };
+  try {
+    const registro = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (registro) await registro.showNotification(tituloDoAlerta, opcoes);
+    else new Notification(tituloDoAlerta, opcoes);
+  } catch { /* sem notificação: o placar na tela continua certo */ }
+}
+
+function conferirAlertas(d) {
+  if (!alertasLigados || Notification.permission !== "granted") { alertaAntes = null; return; }
+  const chave = [estado.cargo, estado.uf, estado.municipio, estado.turno, estado.ambiente].join("|");
+  const eleitos = d.candidatos.filter((c) => c.eleito);
+  const segundoTurno = d.candidatos.filter((c) => !c.eleito && c.situacao.startsWith("2"));
+  const agora = { chave, total: d.votos.total, final: d.final, definidos: [...eleitos, ...segundoTurno].map((c) => c.numero).sort().join(",") };
+  const antes = alertaAntes;
+  alertaAntes = agora;
+  if (!antes || antes.chave !== chave) return;   // primeira leitura desta seleção: só guarda
+  const nomes = (lista) => lista.map((c) => `${c.nome} (${c.partido})`).join(" e ");
+  if (antes.total === 0 && agora.total > 0) {
+    mostrarAlerta("A apuração começou", `${titulo()}: ${pct(d.secoes.percentual)} das seções apuradas.`);
+  } else if (agora.definidos && agora.definidos !== antes.definidos) {
+    const texto = [eleitos.length ? `Eleito: ${nomes(eleitos)}.` : "", segundoTurno.length ? `Vão ao 2º turno: ${nomes(segundoTurno)}.` : ""].filter(Boolean).join(" ");
+    mostrarAlerta("Resultado definido", `${titulo()}. ${texto}`);
+  } else if (!antes.final && agora.final) {
+    mostrarAlerta("Apuração concluída", `${titulo()}: ${pct(d.secoes.percentual)} das seções apuradas.`);
+  }
+}
+
+if ("Notification" in window) {
+  alertasLigados = preferenciaDeAlertas() && Notification.permission === "granted";
+  $("alertas").hidden = false;
+  pintarBotaoDeAlertas();
+  $("alertas").addEventListener("click", alternarAlertas);
+  aoRenderizar.push(conferirAlertas);
+  aoMudarSelecao.push(() => { alertaAntes = null; });
+}
 
 /* Tela cheia: painel para TV. Mantém a tela acesa enquanto estiver aberto (quando o navegador deixa). */
 let travaDeTela = null;

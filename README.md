@@ -207,6 +207,14 @@ Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar
 
 `GET /api/busca?q=campinas` procura cidades de **todas** as UFs pelo nome, sem diferenciar acento nem caixa (aceita `cargo` e `ambiente`; só entram UFs válidas para o cargo). Devolve até 10 em `{"cidades": [{"uf", "codigo", "nome", "capital"}]}`, com quem começa pelo termo primeiro. Termos de menos de 2 letras dão lista vazia e mais de 40 caracteres dão `400`. A lista vem do arquivo de cidades que o servidor já guarda por 6 h: a busca não faz consulta nova ao TSE. Na página, a busca abre com `/` ou `Ctrl`/`⌘`+`K` e também acha cargos, estados e candidatos do placar que está na tela.
 
+### Link compartilhado, app instalável e alertas
+
+**Prévia do link.** Quem monta o link com `?cargo=governador&uf=sp&turno=1` (a própria página atualiza o endereço quando você troca o filtro) vê a prévia da seleção no WhatsApp, no X e em outros: o servidor escreve as meta tags Open Graph no HTML, com título, uma descrição que usa o placar que já está em cache e a imagem `GET /og.png` (1200x630, mesmos parâmetros de `/api/resultado`). A imagem é um PNG desenhado pelo próprio servidor (`imagem.py`, só `zlib`), com o placar dos quatro primeiros, as cores por partido, o selo de eleito ou 2º turno e o horário da última totalização. Cada imagem fica 60 s em memória (no máximo 64). A página nunca ecoa o que veio na URL: só valores validados entram nas meta tags. Os endereços absolutos saem de `URL_PUBLICA` ou, sem ela, do `Host` (e `X-Forwarded-Proto`) da requisição.
+
+**App instalável.** `/manifest.webmanifest`, `/icone-192.png`, `/icone-512.png`, `/icone-512-mascara.png` e `/sw.js` permitem instalar a página no celular e no computador. O service worker só guarda a própria página, como reserva para abrir sem rede; os dados (`/api/*`) nunca são guardados. Ele só é registrado em HTTPS ou em `localhost`/`127.0.0.1`.
+
+**Alertas.** O botão "Alertas" liga notificações do navegador para a seleção que está na tela: quando a apuração começa, quando alguém é eleito ou vai ao 2º turno e quando a apuração termina. Funcionam com a página aberta, também em segundo plano (nesse caso a página volta a buscar a cada 30 s). Não há servidor de push: fechar a aba (ou o app) para os alertas.
+
 ### Anúncio no topo
 
 `GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link"}` (o `link` só vem se for válido). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`) e `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`. A configuração é lida na partida: mudou, reinicie.

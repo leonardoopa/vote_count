@@ -61,7 +61,7 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--ink);
-  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 1rem/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 .pagina { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
 h1 { margin: 0; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; }
@@ -76,6 +76,17 @@ h2 { margin: 0; font-size: 1rem; font-weight: 600; }
   font-size: 0.8125rem; color: var(--ink-2);
 }
 .selo.atencao { color: var(--ink); border-color: var(--ink-2); }
+.cabecalho-direita { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ao-vivo[hidden] { display: none; }
+.ao-vivo::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.ao-vivo.vivo::before { background: var(--good); animation: pulsar 1.6s ease-in-out infinite; }
+.ao-vivo.atrasado::before { background: var(--p-amarelo); }
+.ao-vivo.offline::before { background: var(--p-vermelho); }
+@keyframes pulsar { 50% { opacity: 0.3; } }
+/* Tela cheia (painel para TV): sem filtros nem rodapé, letras maiores. */
+:fullscreen { font-size: 125%; }
+:fullscreen .filtros, :fullscreen .rodape { display: none; }
+:fullscreen .pagina { max-width: 1240px; }
 
 .filtros { display: flex; flex-wrap: wrap; gap: 12px 16px; margin: 20px 0 16px; }
 .filtros label[hidden] { display: none; }
@@ -102,6 +113,13 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 .medidor { height: 8px; border-radius: 4px; background: var(--track); margin: 10px 0 8px; overflow: hidden; }
 .medidor > i { display: block; height: 100%; background: var(--series); border-radius: 4px; transition: width 0.4s; }
 
+.resumo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 32px; margin-bottom: 12px; }
+.resumo[hidden] { display: none; }
+.resumo .rotulo { color: var(--ink-2); font-size: 0.875rem; }
+.resumo-principal .valor { font-size: 2.25rem; line-height: 1.15; font-weight: 650; letter-spacing: -0.02em; }
+.resumo .detalhe { color: var(--ink-2); font-size: 0.875rem; margin-top: 2px; }
+.resumo-destaques { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.resumo-destaques .valor { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
 .indicadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .indicador .rotulo { color: var(--ink-2); font-size: 0.8125rem; }
 .indicador .valor { font-size: clamp(1.1rem, 2vw + 0.7rem, 1.5rem); font-weight: 600; overflow-wrap: anywhere; }
@@ -235,6 +253,7 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
   .linha > .pct { grid-area: pct; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .ao-vivo.vivo::before { animation: none; }
   .painel, .medidor > i, .barra { transition: none; }
 }
 </style>
@@ -248,7 +267,11 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
       <h1>Contador de votos · Eleições 2026</h1>
       <p class="sub" id="subtitulo">Carregando…</p>
     </div>
-    <div class="selos" id="selos" aria-live="polite"></div>
+    <div class="cabecalho-direita">
+      <div class="selos" id="selos" aria-live="polite"></div>
+      <span class="selo ao-vivo" id="ao-vivo" role="status" hidden></span>
+      <button class="botao" id="tela-cheia" type="button" hidden>Tela cheia</button>
+    </div>
   </header>
 
   <form class="filtros" id="filtros" onsubmit="return false">
@@ -274,6 +297,15 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
       <div class="valor" id="heroi-valor">—</div>
       <div class="medidor" role="progressbar" aria-label="Seções apuradas" aria-valuemin="0" aria-valuemax="100" id="medidor"><i id="medidor-barra" style="width:0"></i></div>
       <div class="detalhe" id="heroi-detalhe"></div>
+    </section>
+
+    <section class="cartao resumo" id="resumo" aria-label="Resumo do placar" hidden>
+      <div class="resumo-principal">
+        <div class="rotulo" id="resumo-rotulo"></div>
+        <div class="valor" id="resumo-valor"></div>
+        <div class="detalhe" id="resumo-detalhe"></div>
+      </div>
+      <div class="resumo-destaques" id="resumo-destaques"></div>
     </section>
 
     <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
@@ -413,7 +445,7 @@ const consultaSelecao = (extra = {}) => {
   return q;
 };
 
-let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0;
+let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0, semConexao = false;
 let cidades = [];            // cidades da UF escolhida: [{codigo, nome, capital}]
 let sequenciaCidades = 0;
 
@@ -610,14 +642,28 @@ function renderizar(d) {
   avisar(aoRenderizar, d);
 }
 
+/* Indicador "ao vivo": idade do dado que a página mostra. Fora do ar, ele diz isso em vez de fingir. */
+function mostrarAoVivo(idade) {
+  const minutos = Math.floor(idade / 60);
+  const [classe, texto] = semConexao ? ["offline", "Sem conexão com o servidor"]
+    : ultimo.final ? ["", "Apuração encerrada"]
+    : idade <= 45 ? ["vivo", `Ao vivo · atualizado há ${idade} s`]
+    : ["atrasado", `Dado de ${minutos >= 1 ? minutos + " min" : idade + " s"} atrás`];
+  const el = $("ao-vivo");
+  el.hidden = false;
+  el.className = "selo ao-vivo " + classe;
+  if (el.textContent !== texto) el.textContent = texto;
+}
+
 function mostrarAviso(texto) {
   $("aviso").hidden = !texto;
   $("aviso").textContent = texto;
 }
 
 function atualizarTempo() {
-  if (!ultimo) return;
+  if (!ultimo) { $("ao-vivo").hidden = true; return; }
   const idade = ultimo.idade_s + Math.round((Date.now() - recebidoEm) / 1000);
+  mostrarAoVivo(idade);
   const totalizacao = ultimo.ultima_totalizacao ? `Última totalização: ${ultimo.ultima_totalizacao} (Brasília)` : "Totalização ainda não iniciada";
   $("rodape-tempo").textContent = `${totalizacao} · TSE consultado há ${idade}s · esta página atualiza sozinha.`;
 }
@@ -632,10 +678,11 @@ async function carregar() {
     const resposta = await fetch("/api/resultado?" + q, { cache: "no-store" });
     const corpo = await resposta.json();
     if (minha !== sequencia) return;
+    semConexao = false;
     if (resposta.ok) renderizar(corpo);
     else falhar(corpo.erro);
   } catch {
-    if (minha === sequencia) falhar("Sem conexão com o servidor. Mantendo o último placar.");
+    if (minha === sequencia) { semConexao = true; falhar("Sem conexão com o servidor. Mantendo o último placar."); atualizarTempo(); }
   } finally {
     if (minha === sequencia) {
       $("painel").classList.remove("carregando");
@@ -719,6 +766,57 @@ document.addEventListener("visibilitychange", () => {
   else carregar();
 });
 setInterval(atualizarTempo, 1000);
+
+/* ===== bloco: resumo, ao vivo, exportar, comparar e busca ===== */
+const MAJORITARIOS = ["presidente", "governador", "senador"];
+const pontosPct = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " pontos";
+
+/* Resumo: a diferença que decide a disputa (1º e 2º; no Senado, 2º e 3º) e a participação do eleitor. */
+function pintarResumo(d) {
+  const vagas = estado.cargo === "senador" ? 2 : 1;
+  const dentro = d.candidatos[vagas - 1], fora = d.candidatos[vagas];
+  const nome = (c) => `${c.nome} (${c.partido})`;
+  const [rotulo, valor, detalhe] = d.votos.total === 0
+    ? ["Resumo do placar", "Apuração não começou", "Os números aparecem com a primeira totalização."]
+    : MAJORITARIOS.includes(estado.cargo) && dentro && fora
+      ? [vagas === 1 ? "Diferença entre o 1º e o 2º" : "Diferença entre o 2º (última vaga) e o 3º",
+        dentro.votos === fora.votos ? "Empate" : pontosPct(dentro.percentual - fora.percentual),
+        `${inteiro(dentro.votos - fora.votos)} votos · ${nome(dentro)} à frente de ${nome(fora)}`]
+      : ["Votos apurados", inteiro(d.votos.total), `${inteiro(d.total_candidatos)} candidatos na disputa`];
+  $("resumo-rotulo").textContent = rotulo;
+  $("resumo-valor").textContent = valor;
+  $("resumo-detalhe").textContent = detalhe;
+  const destaque = (rotuloDoNumero, percentual, votos) => criar("div", {},
+    criar("div", { class: "rotulo" }, rotuloDoNumero), criar("div", { class: "valor" }, pct(percentual)), criar("div", { class: "detalhe" }, `${inteiro(votos)} ${votos === 1 ? "voto" : "votos"}`));
+  $("resumo-destaques").replaceChildren(
+    destaque("Comparecimento", d.eleitores.pct_comparecimento, d.eleitores.comparecimento),
+    destaque("Brancos", d.votos.pct_brancos, d.votos.brancos),
+    destaque("Nulos", d.votos.pct_nulos, d.votos.nulos));
+  $("resumo").hidden = false;
+}
+aoRenderizar.push(pintarResumo);
+aoMudarSelecao.push(() => { $("resumo").hidden = true; });
+
+/* Tela cheia: painel para TV. Mantém a tela acesa enquanto estiver aberto (quando o navegador deixa). */
+let travaDeTela = null;
+async function manterTelaLigada(ligar) {
+  try {
+    if (ligar && "wakeLock" in navigator) travaDeTela = await navigator.wakeLock.request("screen");
+    else if (travaDeTela) { await travaDeTela.release(); travaDeTela = null; }
+  } catch { /* sem trava: a tela pode apagar sozinha */ }
+}
+if (document.fullscreenEnabled) {
+  $("tela-cheia").hidden = false;
+  $("tela-cheia").addEventListener("click", () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(() => {});
+  });
+  document.addEventListener("fullscreenchange", () => {
+    const aberta = Boolean(document.fullscreenElement);
+    $("tela-cheia").textContent = aberta ? "Sair da tela cheia" : "Tela cheia";
+    manterTelaLigada(aberta);
+  });
+}
 
 /* ===== bloco: evolução, replay e atualizações ===== */
 const EVO = { W: 640, H: 300, E: 46, D: 12, T: 14, B: 30 };  // tamanho do desenho e margens (esquerda, direita, topo, base)

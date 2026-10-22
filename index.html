@@ -144,7 +144,28 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 .rodape a { color: inherit; }
 
 /* ===== bloco: evolução, replay e atualizações ===== */
-
+.evo { margin-bottom: 12px; }
+.evo-nota { margin: 4px 0 0; color: var(--ink-2); }
+.evo-eixos { margin: 0 0 8px; color: var(--ink-2); font-size: 0.8125rem; }
+.evo-legenda { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 8px; padding: 0; color: var(--ink-2); font-size: 0.8125rem; }
+.evo-legenda li { display: inline-flex; align-items: center; gap: 6px; }
+.evo-legenda svg { flex: none; }
+.evo-grafico svg { display: block; width: 100%; height: auto; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.evo-grafico svg:focus-visible, .evo-rolagem:focus-visible, .evo-tabela summary:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; border-radius: 4px; }
+.evo-grafico text { font: 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink-2); }
+.evo-grafico .evo-rotulo { fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; }
+.evo-grafico .evo-rotulo b { font-weight: 650; }
+.evo-tabela { margin-top: 12px; font-size: 0.8125rem; color: var(--ink-2); }
+.evo-tabela summary { cursor: pointer; width: fit-content; }
+.evo-rolagem { max-height: 18rem; overflow: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; color: var(--ink); }
+.evo-rolagem table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.evo-rolagem th, .evo-rolagem td { padding: 6px 10px; text-align: right; white-space: nowrap; }
+.evo-rolagem th:first-child, .evo-rolagem td:first-child { text-align: left; }
+.evo-rolagem thead th { position: sticky; top: 0; background: var(--surface); box-shadow: 0 1px 0 var(--border); font-weight: 600; }
+.evo-rolagem tbody tr:nth-child(even) { background: var(--wash); }
+.dica .evo-dica-linha { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.dica .evo-dica-linha b { margin-left: auto; padding-left: 14px; font-variant-numeric: tabular-nums; }
+.dica .evo-dica-linha svg { flex: none; }
 
 /* ===== bloco: mapa, regiões, disputas e anúncio ===== */
 
@@ -210,6 +231,19 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
     <!-- bloco: mapa do Brasil e painel por região -->
 
     <!-- bloco: evolução da apuração e replay -->
+    <section class="cartao evo" id="evo" aria-labelledby="evo-h" hidden>
+      <div class="lista-titulo"><h2 id="evo-h">Evolução da apuração</h2><span id="evo-info"></span></div>
+      <p class="evo-nota" id="evo-nota" hidden></p>
+      <div id="evo-corpo" hidden>
+        <p class="evo-eixos">Percentual dos votos válidos de cada candidato, conforme as seções são apuradas.</p>
+        <ul class="evo-legenda" id="evo-legenda"></ul>
+        <div class="evo-grafico" id="evo-grafico"></div>
+        <details class="evo-tabela">
+          <summary>Ver os números em tabela</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Tabela da evolução da apuração, da totalização mais recente para a mais antiga"><table id="evo-tabela"></table></div>
+        </details>
+      </div>
+    </section>
 
     <section class="cartao" aria-labelledby="lista-h">
       <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>

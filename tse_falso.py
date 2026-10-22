@@ -7,7 +7,8 @@
 Troca `contador.buscar` por dados sintéticos no formato do TSE e sobe o servidor de sempre.
 Só o ambiente "simulado" responde; o "oficial" dá 404, para ninguém confundir demonstração
 com dado real. Candidatos e números são inventados (os partidos são reais, para testar as
-cores). Cobre presidente, governador e senador nos dois turnos; os outros cargos dão 404.
+cores). Cobre presidente, governador e senador nos dois turnos e os deputados (federal, estadual e
+distrital) no 1º; os deputados trazem federações e eleitos a partir de metade da apuração.
 A apuração começa zerada, ganha uma totalização nova a cada `--passo` segundos e termina
 em `--duracao` segundos.
 """
@@ -121,17 +122,24 @@ def numeros(cargo, uf, turno, municipio, p):
             (n, nome, partido, peso * math.exp(random.Random(semente("cid", municipio, n)).gauss(0, 0.3)))
             for n, nome, partido, peso in base
         ])
+    parcelas = parcelas_ate(base, municipio or uf, p)
+    totais_da_apuracao = totais(secoes, p)
+    return {
+        "base": [(n, nome, partido) for n, nome, partido, _ in base],
+        **totais_da_apuracao,
+        "votos": {n: round(totais_da_apuracao["validos"] * parcela) for (n, *_), parcela in zip(base, parcelas)},
+    }
+
+
+def totais(secoes, p):
+    """Seções, eleitores e votos (válidos, brancos e nulos) quando a apuração está em `p` (0 a 1)."""
     aptos = secoes * 280
     comparecimento = round(aptos * 0.79 * p)
     brancos = round(comparecimento * 0.03)
     nulos = round(comparecimento * 0.05)
-    validos = comparecimento - brancos - nulos
-    parcelas = parcelas_ate(base, municipio or uf, p)
     return {
-        "base": [(n, nome, partido) for n, nome, partido, _ in base],
         "secoes": secoes, "apuradas": round(secoes * p), "aptos": aptos, "apurados": round(aptos * p),
-        "comparecimento": comparecimento, "brancos": brancos, "nulos": nulos, "validos": validos,
-        "votos": {n: round(validos * parcela) for (n, *_), parcela in zip(base, parcelas)},
+        "comparecimento": comparecimento, "brancos": brancos, "nulos": nulos, "validos": comparecimento - brancos - nulos,
     }
 
 
@@ -172,13 +180,9 @@ def relogio(p):
     return f"{horas:02d}:{minutos:02d}:{segundos:02d}"
 
 
-def montar(cargo, uf, turno, municipio, p):
-    n = numeros_do_brasil(turno, p) if uf == "br" else numeros(cargo, uf, turno, municipio, p)
-    if n is None:
-        return None
+def cabecalho(n, p):
+    """Campos do arquivo que não dependem do cargo: horário, seções, eleitores e votos."""
     final = p >= 1
-    ordem = sorted(n["base"], key=lambda c: -n["votos"][c[0]])
-    rotulos = rotulos_finais(cargo, turno, n, ordem) if final else {}
     hora = relogio(p)
     return {
         "tf": "s" if final else "n",
@@ -189,6 +193,18 @@ def montar(cargo, uf, turno, municipio, p):
               "a": str(n["apurados"] - n["comparecimento"]), "pa": pct(n["apurados"] - n["comparecimento"], n["apurados"])},
         "v": {"tv": str(n["comparecimento"]), "vb": str(n["brancos"]), "pvb": pct(n["brancos"], n["comparecimento"]),
               "tvn": str(n["nulos"]), "ptvn": pct(n["nulos"], n["comparecimento"])},
+    }
+
+
+def montar(cargo, uf, turno, municipio, p):
+    n = numeros_do_brasil(turno, p) if uf == "br" else numeros(cargo, uf, turno, municipio, p)
+    if n is None:
+        return None
+    final = p >= 1
+    ordem = sorted(n["base"], key=lambda c: -n["votos"][c[0]])
+    rotulos = rotulos_finais(cargo, turno, n, ordem) if final else {}
+    return {
+        **cabecalho(n, p),
         "carg": [{"agr": [
             {"par": [{"sg": partido, "cand": [{
                 "n": numero, "nm": nome.upper(), "nmu": nome.upper(), "dvt": "Válido",
@@ -197,6 +213,105 @@ def montar(cargo, uf, turno, municipio, p):
             }]}]}
             for numero, nome, partido in n["base"]
         ]}],
+    }
+
+
+# ---- deputados ----
+
+FEDERACOES = {  # número -> (sigla, partidos), como as federações reais de 2026
+    "101": ("PT/PC do B/PV", ["PT", "PC do B", "PV"]), "104": ("UNIÃO/PP", ["UNIÃO", "PP"]),
+    "102": ("PSOL/REDE", ["PSOL", "REDE"]), "100": ("PSDB/CIDADANIA", ["PSDB", "CIDADANIA"]),
+}
+PARTIDOS_DEPUTADOS = ["PT", "PC do B", "PV", "PL", "REPUBLICANOS", "PSD", "UNIÃO", "PP", "MDB", "PSB", "PSOL", "REDE",
+                      "NOVO", "PDT", "PSDB", "CIDADANIA", "PODE", "AVANTE"]
+PRIMEIROS = ["ANA", "BRUNO", "CARLA", "DAVI", "ELISA", "FÁBIO", "GISELE", "HUGO", "IARA", "JOÃO", "KAREN", "LUCAS", "MARTA", "NELSON", "ÓLIVIA", "PAULO"]
+SOBRENOMES = ["LIMA", "CASTRO", "ROCHA", "MOREIRA", "PRADO", "NUNES", "ALVES", "TELES", "MELO", "FARIA", "COSTA", "SOUZA", "DIAS", "RAMOS", "BORGES", "MENDES"]
+CARGOS_DEPUTADOS = ("deputado-federal", "deputado-estadual", "deputado-distrital")
+
+
+def distribuir(total, pesos, minimo):
+    """Divide `total` cadeiras entre as chaves de `pesos`, no mínimo `minimo` cada, pelo maior resto."""
+    livre = total - minimo * len(pesos)
+    soma = sum(pesos.values())
+    cotas = {k: livre * v / soma for k, v in pesos.items()}
+    partes = {k: minimo + int(c) for k, c in cotas.items()}
+    for k in sorted(cotas, key=lambda k: (int(cotas[k]) - cotas[k], k))[: total - sum(partes.values())]:
+        partes[k] += 1
+    return partes
+
+
+VAGAS_FEDERAL = distribuir(513, {uf: SECOES[uf] for uf in contador.UFS}, 8)
+
+
+def vagas_de(cargo, uf):
+    return {"deputado-federal": VAGAS_FEDERAL[uf], "deputado-estadual": 3 * VAGAS_FEDERAL[uf], "deputado-distrital": 24}[cargo]
+
+
+def montar_deputados(cargo, uf, p):
+    """Arquivo de deputados de uma UF no formato do TSE: agrupamentos (federações e partidos), candidatos e eleitos."""
+    rng = random.Random(semente(cargo, uf, "deputados"))
+    vagas = vagas_de(cargo, uf)
+    n = totais(SECOES[uf], p)
+    na_federacao = {sigla: numero for numero, (_, siglas) in FEDERACOES.items() for sigla in siglas}
+    # agrupamentos: cada federação vale um só; os demais partidos entram sozinhos
+    agrupamentos = {}
+    for sigla in PARTIDOS_DEPUTADOS:
+        chave = na_federacao.get(sigla, sigla)
+        agrupamentos.setdefault(chave, []).append(sigla)
+    forca = {chave: rng.uniform(0.3, 1.0) ** 2 for chave in agrupamentos}
+    candidatos_por_agrupamento = {chave: max(2, round(vagas * 3.2 * f / sum(forca.values()) * len(forca) / 3)) for chave, f in forca.items()}
+    todos = []  # (votos, chave do agrupamento, partido, indice)
+    contador_de_nomes = 0
+    for chave, siglas in agrupamentos.items():
+        quantos = candidatos_por_agrupamento[chave]
+        pesos = [rng.uniform(0.05, 1.0) ** 3 for _ in range(quantos)]
+        soma_pesos = sum(pesos)
+        for peso in pesos:
+            todos.append([forca[chave] * peso / soma_pesos, chave, rng.choice(siglas), contador_de_nomes])
+            contador_de_nomes += 1
+    total_bruto = sum(c[0] for c in todos)
+    for c in todos:
+        c[0] = round(n["validos"] * 0.9 * c[0] / total_bruto * (1 + 0.04 * math.sin(c[3] + p * 6)))
+    # quem fica com as cadeiras: D'Hondt entre os agrupamentos, e dentro de cada um os mais votados
+    eleitos, cadeiras = set(), {}
+    if p >= 0.5:
+        soma_por_agrupamento = {chave: sum(c[0] for c in todos if c[1] == chave) for chave in agrupamentos}
+        ganhas = dict.fromkeys(agrupamentos, 0)
+        for _ in range(vagas):
+            melhor = max(agrupamentos, key=lambda k: (soma_por_agrupamento[k] / (ganhas[k] + 1), k))
+            ganhas[melhor] += 1
+        for chave, quantas in ganhas.items():
+            do_grupo = sorted((c for c in todos if c[1] == chave), key=lambda c: -c[0])[:quantas]
+            eleitos.update(c[3] for c in do_grupo)
+        cadeiras = ganhas
+    final = p >= 1
+    por_votos = sorted(todos, key=lambda c: -c[0])
+    posicao = {c[3]: i for i, c in enumerate(por_votos)}
+
+    def candidato(c):
+        votos, _, sigla, indice = c
+        nome = f"{PRIMEIROS[indice % 16]} {SOBRENOMES[(indice // 16 + indice) % 16]}"
+        escolhido = indice in eleitos
+        situacao = "Eleito por QP" if escolhido else ("Suplente" if posicao[indice] < vagas * 2 else "Não eleito") if final else ""
+        return {"n": str(1000 + 10 * indice + PARTIDOS_DEPUTADOS.index(sigla)), "sqcand": str(250000000000 + indice), "nm": nome,
+                "nmu": nome, "dvt": "Válido", "seq": str(indice + 1), "e": "s" if escolhido else "n", "st": situacao,
+                "vap": str(votos), "pvap": pct(votos, n["validos"])}
+
+    agr = []
+    for chave, siglas in agrupamentos.items():
+        federacao = FEDERACOES.get(chave)
+        agr.append({
+            "n": chave, "nm": f"FEDERAÇÃO {federacao[0]}" if federacao else siglas[0], "tp": "f" if federacao else "i",
+            "com": federacao[0] if federacao else siglas[0], "vag": str(cadeiras.get(chave, 0)),
+            "par": [{"n": str(10 + PARTIDOS_DEPUTADOS.index(sigla)), "sg": sigla, "nm": sigla, "nfed": chave if federacao else "",
+                     "dvt": "Válido (legenda)", "cand": [candidato(c) for c in todos if c[1] == chave and c[2] == sigla]}
+                    for sigla in siglas],
+        })
+    return {
+        **cabecalho(n, p),
+        "carg": [{"cd": str(contador.CARGOS[cargo][0]), "nv": str(vagas),
+                  "fed": [{"n": numero, "sg": sigla, "com": sigla, "npar": []} for numero, (sigla, _) in FEDERACOES.items()],
+                  "agr": agr}],
     }
 
 
@@ -217,6 +332,15 @@ def buscar_falso(url, etag=None):
     eleicao, uf, municipio, codigo_cargo = int(achado[1]), achado[2], achado[3] or "", int(achado[4])
     cargo = CARGOS.get(codigo_cargo)
     tipo, turno = ELEICOES.get(eleicao, (None, None))
+    if cargo in CARGOS_DEPUTADOS:
+        valido = turno == 1 and not municipio and contador.uf_valida(cargo, uf) and uf != "br"
+        if not valido:
+            return contador.Resposta(404, None, etag)
+        passo, p = progresso()
+        marca = f'"{passo}"'
+        if etag == marca:
+            return contador.Resposta(304, None, marca)
+        return contador.Resposta(200, montar_deputados(cargo, uf, p), marca)
     if cargo not in ("presidente", "governador", "senador") or contador.CARGOS[cargo][1] != tipo:
         return contador.Resposta(404, None, etag)
     if uf in ("br", "zz") and not (cargo == "presidente" and not municipio):

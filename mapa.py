@@ -18,6 +18,7 @@ LIMITE_404 = 3             # 404 que interrompem a rodada (o TSE bloqueia o IP d
 TTL_UF = 20                # segundos no cache por UF; o placar principal usa 10, o mapa pode ser mais lento
 TTL_PRIMEIRO_TURNO = 1800  # o 1º turno só diz quem foi ao 2º; depois de apurado não muda mais
 IDADE_AVISO_S = 120        # dado de UF mais velho que isso ganha aviso
+CADEIRAS_DO_SENADO, CADEIRAS_EM_DISPUTA = 81, 54  # em 2026 renovam-se 2/3 do Senado: 2 vagas por UF
 VAGAS = {"senador": 2}     # vagas por UF em 2026 (2/3 do Senado); os outros cargos majoritários têm uma
 REGIOES = {
     "Norte": ("ac", "am", "ap", "pa", "ro", "rr", "to"),
@@ -110,6 +111,8 @@ def resumir_uf(dados, com_votos=False, vagas=1):
     votos = [contador.inteiro(cand["vap"]) for cand in todos]
     sem_apuracao = not todos or not any(votos) or apuradas == 0
     resumo["disputa"] = resumir_disputa(todos, vagas, sem_apuracao)
+    if vagas > 1:  # quem ocupa as vagas agora (Senado): alimenta o hemiciclo
+        resumo["ocupantes"] = [] if sem_apuracao else [resumir_candidato(cand) for cand in todos[:vagas]]
     if sem_apuracao:
         resumo["situacao"] = "zerado"
     elif len(todos) > 1 and votos[0] == votos[1]:
@@ -332,4 +335,31 @@ def regioes(corpo, mostrar=3):
         })
     resposta = {chave: corpo[chave] for chave in ("cargo", "turno", "ambiente", "final", "idade_s", "aviso") if chave in corpo}
     resposta["regioes"] = lista
+    return resposta
+
+
+def senado(corpo):
+    """Hemiciclo do Senado em 2026: as 54 vagas em disputa (2 por UF), cada uma 'eleito', 'liderando' ou 'indefinida'.
+
+    As outras 27 cadeiras não estão em jogo nesta eleição e o TSE não as publica. `corpo` é o resumo por UF
+    do senador (`resumo_por_uf`); nada aqui consulta o TSE nem altera `corpo`.
+    """
+    cadeiras, contagem = [], {}
+    for uf, resumo in corpo["ufs"].items():
+        ocupantes = resumo.get("ocupantes") or []
+        for i in range(VAGAS["senador"]):
+            if i < len(ocupantes):
+                cand = ocupantes[i]
+                situacao = "eleito" if cand["eleito"] else "liderando"
+                cadeiras.append({"uf": uf, "partido": cand["partido"], "nome": cand["nome"], "situacao": situacao})
+                dos_partidos = contagem.setdefault(cand["partido"], {"partido": cand["partido"], "eleitos": 0, "liderando": 0})
+                dos_partidos["eleitos" if cand["eleito"] else "liderando"] += 1
+            else:
+                cadeiras.append({"uf": uf, "partido": None, "nome": None, "situacao": "indefinida"})
+    resposta = {chave: corpo[chave] for chave in ("ambiente", "final", "idade_s", "aviso") if chave in corpo}
+    resposta.update({
+        "casa": "senado", "total": CADEIRAS_DO_SENADO, "em_disputa": CADEIRAS_EM_DISPUTA,
+        "fora_da_disputa": CADEIRAS_DO_SENADO - CADEIRAS_EM_DISPUTA, "cadeiras": cadeiras,
+        "partidos": sorted(contagem.values(), key=lambda c: (-(c["eleitos"] + c["liderando"]), -c["eleitos"], c["partido"])),
+    })
     return resposta

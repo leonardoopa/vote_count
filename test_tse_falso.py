@@ -2,6 +2,7 @@ import unittest
 from unittest import mock
 
 import contador
+import deputados
 import servidor
 import tse_falso
 
@@ -76,8 +77,38 @@ class TseFalso(unittest.TestCase):
         self.assertEqual(pedir("governador", "sp", 1, 0.5, municipio=sp[0]["codigo"]).status, 200)
         self.assertEqual(pedir("governador", "sp", 1, 0.5, municipio="99999").status, 404)
 
+    def test_deputados_so_no_primeiro_turno_e_nas_ufs_do_cargo(self):
+        self.assertEqual(pedir("deputado-federal", "sp", 1, 0.5).status, 200)
+        self.assertEqual(pedir("deputado-estadual", "sp", 1, 0.5).status, 200)
+        self.assertEqual(pedir("deputado-distrital", "df", 1, 0.5).status, 200)
+        for cargo, uf, turno in (("deputado-federal", "sp", 2), ("deputado-federal", "br", 1), ("deputado-federal", "zz", 1),
+                                 ("deputado-estadual", "df", 1), ("deputado-distrital", "sp", 1)):
+            with self.subTest(cargo=cargo, uf=uf, turno=turno):
+                self.assertEqual(pedir(cargo, uf, turno, 0.5).status, 404)
+        self.assertEqual(pedir("deputado-federal", "sp", 1, 0.5, municipio="10000").status, 404)
+
+    def test_deputados_tem_federacoes_vagas_e_eleitos_so_depois_da_metade(self):
+        antes = deputados.resumir_arquivo(pedir("deputado-federal", "ac", 1, 0.4).dados, "ac")
+        depois = deputados.resumir_arquivo(pedir("deputado-federal", "ac", 1, 1.0).dados, "ac")
+        self.assertEqual(antes["eleitos"], 0)
+        self.assertEqual((depois["eleitos"], depois["vagas"]), (tse_falso.VAGAS_FEDERAL["ac"], tse_falso.VAGAS_FEDERAL["ac"]))
+        self.assertTrue(depois["final"] and not antes["final"])
+        self.assertEqual({b["nome"] for b in depois["blocos"] if b["federacao"]}, {"PT/PC do B/PV", "UNIÃO/PP", "PSOL/REDE", "PSDB/CIDADANIA"})
+        self.assertEqual(sum(b["cadeiras"] for b in depois["blocos"]), depois["eleitos"])
+
+    def test_cadeiras_da_camara_somam_513(self):
+        self.assertEqual(sum(tse_falso.VAGAS_FEDERAL.values()), 513)
+        self.assertTrue(all(v >= 8 for v in tse_falso.VAGAS_FEDERAL.values()))
+        resumos = {uf: deputados.resumir_arquivo(pedir("deputado-federal", uf, 1, 1.0).dados, uf) for uf in contador.UFS}
+        self.assertEqual(deputados.camara(resumos)["eleitos"], 513)
+
+    def test_deputado_cabe_no_resumo_do_servidor(self):
+        resumo = servidor.resumir(pedir("deputado-federal", "sp", 1, 1.0).dados, 5)
+        self.assertEqual(resumo["secoes"]["percentual"], 100.0)
+        self.assertTrue(resumo["candidatos"][0]["eleito"])
+
     def test_cargo_sem_suporte_da_404(self):
-        self.assertEqual(pedir("deputado-federal", "sp", 1, 0.5).status, 404)
+        self.assertEqual(pedir("deputado-federal", "sp", 1, 0.5, ambiente="oficial").status, 404)
 
 
 if __name__ == "__main__":

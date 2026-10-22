@@ -22,9 +22,11 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import anuncio
 import compartilhar
 import contador
+import deputados
 import historico
 import imagem
 import mapa
+import varredura
 
 PAGINA = Path(__file__).with_name("index.html")
 
@@ -377,6 +379,64 @@ ROTAS_API.update({
     "/api/mapa": mapa_por_uf,
     "/api/regioes": regioes_do_pais,
     "/api/disputas": disputas_apertadas,
+})
+
+
+# ---- hemiciclo e mais votados ----
+
+# Recursos que precisam de dezenas de arquivos do TSE (os deputados de cada UF) são servidos pelo varredor:
+# uma thread, poucas buscas por segundo no total, só enquanto alguém olha. 0 desliga esses recursos.
+BUSCAS_EXTRAS_POR_SEGUNDO = float(os.environ.get("BUSCAS_EXTRAS_POR_SEGUNDO", "2") or 0)
+VARREDOR = varredura.Varredor(BUSCAS_EXTRAS_POR_SEGUNDO)
+RECURSO_DESLIGADO = (503, {"erro": "Este recurso está desligado neste servidor (BUSCAS_EXTRAS_POR_SEGUNDO=0)."})
+FAMILIAS = {"deputado-federal": "federal", "deputado-estadual": "estadual", "deputado-distrital": "estadual"}
+
+
+def cargo_da_familia(familia, uf):
+    """Federal: um cargo em todas as UFs. Estadual: o do DF é o distrital."""
+    return "deputado-federal" if familia == "federal" else "deputado-distrital" if uf == "df" else "deputado-estadual"
+
+
+def painel_de_deputados(consulta, familia, montar):
+    """(status, corpo) de um recurso feito com os arquivos de deputados de todas as UFs. `montar` recebe {uf: resumo}."""
+    ambiente = consulta.get("ambiente", ["oficial"])[0]
+    if ambiente not in contador.AMBIENTES:
+        return 400, {"erro": "ambiente inválido"}
+
+    def fabrica():
+        trabalhos = {uf: varredura.Trabalho(uf, contador.montar_url(ambiente, cargo_da_familia(familia, uf), uf, 1)) for uf in contador.UFS}
+        return trabalhos, deputados.resumir_arquivo, deputados.intervalo
+
+    grupo = VARREDOR.pedir(("deputados", ambiente, familia), fabrica)
+    if grupo is None:
+        return RECURSO_DESLIGADO
+    fotos = VARREDOR.resumos(grupo)
+    corpo = montar({uf: foto[0] for uf, foto in fotos.items()})
+    verificados = [foto[1] for foto in fotos.values() if foto[0]]
+    corpo.update(ambiente=ambiente, idade_s=round(VARREDOR.relogio() - min(verificados)) if verificados else None)
+    return 200, corpo
+
+
+def camara_dos_deputados(consulta):
+    return painel_de_deputados(consulta, "federal", deputados.camara)
+
+
+def mais_votados(consulta):
+    cargo = consulta.get("cargo", ["deputado-federal"])[0]
+    if cargo not in FAMILIAS:
+        return 400, {"erro": "só deputado federal, estadual ou distrital têm ranking de mais votados"}
+    status, corpo = painel_de_deputados(consulta, FAMILIAS[cargo], deputados.mais_votados)
+    return status, {**corpo, "cargo": cargo} if status == 200 else corpo
+
+
+def senado_em_disputa(consulta):
+    return derivado({**consulta, "cargo": ["senador"]}, ("senador",), mapa.senado)
+
+
+ROTAS_API.update({
+    "/api/camara": camara_dos_deputados,
+    "/api/maisvotados": mais_votados,
+    "/api/senado": senado_em_disputa,
 })
 
 

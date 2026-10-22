@@ -203,6 +203,14 @@ Para o histórico sobreviver a um reinício, defina `HISTORICO_DIR` (no Docker j
 
 Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar_mapa.py` e embutida na página (o servidor nunca acessa o IBGE). Para refazer: `python3 tools/gerar_mapa.py` e colar a saída no lugar de `MAPA_UFS` em `index.html`.
 
+### Hemiciclo e mais votados
+
+`GET /api/senado` (aceita `ambiente`) devolve o hemiciclo do Senado: em 2026 disputam-se 54 das 81 cadeiras (2 por UF) e cada uma vem como `eleito`, `liderando` (líder ainda sem "Eleito" do TSE) ou `indefinida` (UF sem apuração), em `cadeiras: [{"uf", "partido", "nome", "situacao"}]`, mais `partidos: [{"partido", "eleitos", "liderando"}]`. Usa a mesma rodada de consultas do mapa (as 27 UFs do senador). As outras 27 cadeiras não estão em jogo e o TSE não as publica.
+
+`GET /api/camara` (aceita `ambiente`) devolve o hemiciclo da Câmara: `partidos: [{"partido", "cadeiras", "bloco"}]`, `blocos: [{"bloco", "federacao", "partidos", "cadeiras"}]` (cada bloco é uma federação do TSE ou um partido isolado), `eleitos`, `total` (513) e `ufs_com_dados` de `ufs_total`. `GET /api/maisvotados` (aceita `cargo`: `deputado-federal`, `deputado-estadual` ou `deputado-distrital`, e `ambiente`) devolve os 20 mais votados do país em `candidatos`, com `ufs_com_dados` de `ufs_total`; estadual e distrital formam um ranking só. Eleitos são os que o TSE marca como "Eleito" no arquivo.
+
+Esses dois precisam de um arquivo de deputados por UF (27 por cargo). Quem busca é o **varredor** (`varredura.py`): uma thread só, no máximo `BUSCAS_EXTRAS_POR_SEGUNDO` buscas por segundo no total (padrão 2, contra o limite de 100 do TSE; `0` desliga os recursos e as rotas dão `503`), só enquanto alguém está olhando (5 min sem ninguém, a thread encerra), com `If-None-Match` (o TSE responde 304 sem corpo) e guardando só um resumo de cada UF. Um `403` ou `429` pausa tudo por 10 minutos e 3 respostas `404` seguidas pausam por 1 minuto. As respostas **enchem aos poucos** (`ufs_com_dados` cresce a cada busca); depois de apurada, cada UF é revista a cada 30 minutos, e antes disso a cada 90 s.
+
 ### Busca rápida
 
 `GET /api/busca?q=campinas` procura cidades de **todas** as UFs pelo nome, sem diferenciar acento nem caixa (aceita `cargo` e `ambiente`; só entram UFs válidas para o cargo). Devolve até 10 em `{"cidades": [{"uf", "codigo", "nome", "capital"}]}`, com quem começa pelo termo primeiro. Termos de menos de 2 letras dão lista vazia e mais de 40 caracteres dão `400`. A lista vem do arquivo de cidades que o servidor já guarda por 6 h: a busca não faz consulta nova ao TSE. Na página, a busca abre com `/` ou `Ctrl`/`⌘`+`K` e também acha cargos, estados e candidatos do placar que está na tela.

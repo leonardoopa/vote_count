@@ -549,5 +549,63 @@ class RotasDerivadas(unittest.TestCase):
             self.assertIs(servidor.ROTAS_API[caminho], funcao)
 
 
+class Senado(unittest.TestCase):
+    def corpo(self, eleitos=(), zeradas=(), faltando=()):
+        def dados(uf):
+            marca = "Eleito" if uf in eleitos else ""
+            zero = uf in zeradas
+            votos = (0, 0, 0) if zero else (500, 300, 200)
+            return arquivo([("13", "Ana", "PT", votos[0], "50,00", marca), ("22", "Bia", "PL", votos[1], "30,00", marca), ("55", "Caio", "PSD", votos[2], "20,00", "")],
+                           secoes=(1000, 0 if zero else 500))
+
+        dados_por_uf = {uf: dados(uf) for uf in contador.UFS if uf not in faltando}
+        fonte = fonte_com("senador", 1, dados_por_uf)
+        return mapa.resumo_por_uf(fonte, "oficial", "senador", 1, pausa=0, agora=lambda: AGORA)[0]
+
+    def test_cinquenta_e_quatro_cadeiras_duas_por_uf(self):
+        senado = mapa.senado(self.corpo())
+        self.assertEqual((senado["casa"], senado["total"], senado["em_disputa"], senado["fora_da_disputa"]), ("senado", 81, 54, 27))
+        self.assertEqual(len(senado["cadeiras"]), 54)
+        self.assertEqual([c["uf"] for c in senado["cadeiras"]][:4], ["ac", "ac", "al", "al"])
+
+    def test_eleito_liderando_e_indefinida(self):
+        senado = mapa.senado(self.corpo(eleitos=("sp",), zeradas=("rj",)))
+        por_uf = {}
+        for c in senado["cadeiras"]:
+            por_uf.setdefault(c["uf"], []).append(c)
+        self.assertEqual([(c["partido"], c["situacao"]) for c in por_uf["sp"]], [("PT", "eleito"), ("PL", "eleito")])
+        self.assertEqual([(c["partido"], c["situacao"]) for c in por_uf["mg"]], [("PT", "liderando"), ("PL", "liderando")])
+        self.assertEqual([(c["partido"], c["nome"], c["situacao"]) for c in por_uf["rj"]], [(None, None, "indefinida")] * 2)
+
+    def test_partidos_contam_eleitos_e_liderando(self):
+        senado = mapa.senado(self.corpo(eleitos=("sp", "mg"), zeradas=("rj",)))
+        self.assertEqual(senado["partidos"], [
+            {"partido": "PL", "eleitos": 2, "liderando": 24}, {"partido": "PT", "eleitos": 2, "liderando": 24},
+        ])
+
+    def test_uf_sem_dados_tambem_fica_indefinida(self):
+        corpo = self.corpo(faltando=("sp", "rj", "mg"))  # 3 UFs sem arquivo: a rodada para nos 404 e o que não foi buscado fica sem dados
+        senado = mapa.senado(corpo)
+        self.assertEqual(len(senado["cadeiras"]), 54)
+        self.assertEqual(sum(1 for c in senado["cadeiras"] if c["situacao"] == "indefinida") % 2, 0)
+        self.assertIn("aviso", senado)
+
+    def test_nao_mexe_no_corpo_e_leva_o_que_importa(self):
+        corpo = self.corpo(eleitos=("sp",))
+        antes = repr(corpo)
+        senado = mapa.senado(corpo)
+        self.assertEqual(repr(corpo), antes)
+        self.assertEqual((senado["ambiente"], senado["final"], senado["idade_s"]), ("oficial", False, 0))
+
+    def test_rota(self):
+        servidor._PRONTAS.clear()
+        self.addCleanup(servidor._PRONTAS.clear)
+        dados = {url("senador", uf): (arquivo(Disputa.TRES), 200, time.time()) for uf in contador.UFS}
+        with mock.patch.object(servidor.CACHE, "obter", side_effect=lambda u, ttl=None: dados.get(u, (None, 404, 0))):
+            status, corpo = servidor.senado_em_disputa({"ambiente": ["oficial"], "cargo": ["presidente"]})  # o cargo do visitante é ignorado
+        self.assertEqual((status, corpo["casa"], len(corpo["cadeiras"])), (200, "senado", 54))
+        self.assertEqual(servidor.senado_em_disputa({"ambiente": ["../x"]})[0], 400)
+
+
 if __name__ == "__main__":
     unittest.main()

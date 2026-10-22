@@ -171,6 +171,44 @@ O TSE limita o acesso a 100 requisições por segundo por IP e bloqueia o IP por
 - cada cidade é uma consulta a mais, então o servidor faz no máximo 20 consultas por segundo ao TSE (sobra com folga do limite de 100) e guarda no máximo 400 seleções em memória, descartando as menos usadas;
 - ao receber 403 ou 429, espera 10 minutos e continua mostrando o último placar.
 
+## Roadmap
+
+Ideias levantadas a partir de uma análise de painéis concorrentes de apuração (o 2º turno é em 25/10, então a ordem importa). Vale reproduzir a **funcionalidade**, nunca o visual, os textos, a marca ou as fotos de terceiros.
+
+Nosso diferencial: sem login, sem convite e sem e-mail obrigatório; API aberta; só biblioteca padrão do Python; respeito às regras de acesso do TSE.
+
+### Prioridade 1 (antes do 2º turno)
+
+1. **Evolução da apuração.** O servidor guarda um snapshot do placar a cada totalização nova (percentual de cada candidato por % de seções apuradas). A página mostra um gráfico de linhas "ao longo da apuração" e a API expõe a série (ex.: `GET /api/historico`). Guardar em memória com limite e, se der, em disco para sobreviver a reinício.
+2. **Replay.** Linha do tempo com play sobre os snapshots do item 1, para rever a apuração do começo ao fim.
+3. **Feed de atualizações.** Lista cronológica de eventos: "+N seções", variação do placar, candidato eleito, disputa que foi para o 2º turno. Gerar comparando um snapshot com o anterior.
+4. **Mapa por UF.** Mapa do Brasil colorido pelo líder de cada UF, com intensidade pela margem e clique que seleciona a UF. Usar SVG embutido, sem dependência externa.
+
+### Prioridade 2
+
+5. **Compartilhar com imagem.** Meta tags Open Graph por seleção (`?cargo=...&uf=...`) e imagem gerada no servidor, para o link abrir com prévia no WhatsApp e no X.
+6. **PWA e alerta.** `manifest` e service worker para instalar no celular; notificação quando a apuração começar ou o resultado ficar definido.
+7. **Painel por região** (Norte, Nordeste, Centro-Oeste, Sudeste, Sul, Exterior) no placar de presidente.
+8. **Disputas mais apertadas.** Ranking de governador e senador por menor margem, com selo de "eleito" e "2º turno".
+9. **Busca rápida** (atalho `/` ou `⌘K`) por UF, cidade e candidato.
+10. **Resumo do placar:** diferença em pontos e em votos; comparecimento, brancos e nulos em destaque.
+
+### Prioridade 3
+
+11. **Hemiciclo** da Câmara e do Senado, com contagem por partido e bloco.
+12. **Mais votados do Brasil** em deputado federal e estadual.
+13. **Comparar** duas cidades ou dois cargos lado a lado.
+14. **Exportar** CSV e JSON do que está na tela.
+15. **Mapa por município.** Depende de geometria das cidades (arquivo GeoJSON pesado), por isso fica por último. Tratar a falha de carregamento com aviso claro e nova tentativa.
+16. **Tela cheia** e indicador "ao vivo" com a idade do dado (`idade_s` já existe na API).
+
+### Regras para quem implementar
+
+- Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor.
+- Manter a página num arquivo só, sem dependência de CDN, e o tema claro e escuro.
+- Cada item novo ganha teste em `test_servidor.py` ou `test_contador.py`.
+- Atualizar a seção [API](#api) quando criar endpoint.
+
 ## Estrutura
 
 ```

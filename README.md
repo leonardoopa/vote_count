@@ -84,6 +84,40 @@ docker compose -f compose.yaml -f compose.vps.yaml up -d --build
 
 4. Depois que `https://votos.seudominio.com.br` abrir, feche a porta pública antiga: tire `BIND` e `PORTA` do `.env` daqui (o padrão volta para `127.0.0.1`) e repita o comando acima.
 
+### Deploy automático (GitHub Actions)
+
+Toda vez que um commit entra na `main` e a CI (workflow **CI**) passa, o workflow **Deploy** (`.github/workflows/deploy.yml`) atualiza a VPS sozinho:
+
+1. Entra na VPS por SSH com uma chave só para isso e roda `deploy/deploy.sh <sha> <pasta>` (o script vem do próprio repositório, por stdin).
+2. Na VPS, o script anota o commit que está no ar, confere que o novo está na `main`, faz `git reset --hard <sha>` e `docker compose -f compose.yaml -f compose.vps.yaml up -d --build`.
+3. Espera o contêiner ficar `healthy` (até 2 min). Se não ficar, **volta ao commit anterior**, sobe de novo e faz o job falhar, para o erro aparecer em vermelho no GitHub. O log mostra o commit de antes e o de agora.
+4. Opcional: se a variável `PRODUCAO_URL` existir, o Actions confere `/saude` pela internet no fim.
+
+Só dispara com CI verde, em `push` na `main` deste repositório (nunca em PR nem em fork), e um deploy por vez. O `.env` da VPS nunca é lido nem aparece no log. Quem consegue mergear na `main` coloca coisa no ar: ative em Settings > Branches a proteção da `main` (exigir PR e a CI verde).
+
+**O que você precisa fazer uma vez** (nada disso fica no repositório):
+
+1. **Chave SSH só para o deploy.** No seu computador: `ssh-keygen -t ed25519 -f ~/.ssh/vote_count_deploy -C "deploy vote_count" -N ""`. Na VPS, acrescente a linha pública em `~/.ssh/authorized_keys` do usuário que roda o Docker, com restrições: `no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA... deploy vote_count` (o conteúdo de `~/.ssh/vote_count_deploy.pub` vem depois das restrições). Atenção: quem acessa o Docker é equivalente a root na VPS, então guarde a chave privada só no secret do GitHub.
+2. **`known_hosts` do servidor**, para o SSH não aceitar um servidor falso: `ssh-keyscan -t ed25519 IP-DA-VPS` e confira a impressão digital com a que a própria VPS mostra em `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` antes de copiar. Se o SSH não usa a porta 22: `ssh-keyscan -p PORTA -t ed25519 IP-DA-VPS`.
+3. **Environment `production`** em Settings > Environments > New environment (se quiser, marque "Required reviewers" para o deploy esperar o seu aprovar). Nele, em **Environment secrets**:
+
+| Secret | Valor |
+|---|---|
+| `VPS_HOST` | IP ou nome da VPS |
+| `VPS_USER` | usuário do SSH (precisa usar o Docker sem `sudo`) |
+| `VPS_PATH` | pasta do projeto na VPS (hoje `~/contador`; use o caminho completo, ex.: `/home/usuario/contador`) |
+| `VPS_SSH_KEY` | o conteúdo inteiro da chave **privada** `~/.ssh/vote_count_deploy` (com as linhas `BEGIN` e `END`) |
+| `VPS_KNOWN_HOSTS` | a saída do `ssh-keyscan` do passo 2 |
+| `VPS_PORT` | opcional, só se o SSH não usa a 22 |
+
+4. **Variáveis** (Settings > Secrets and variables > Actions > Variables, opcionais): `PRODUCAO_URL` (ex.: `https://votos.seudominio.com.br`, para a conferência de `/saude` pela internet) e `DEPLOY_AUTOMATICO`.
+5. **Na VPS**, a pasta do projeto precisa ser um clone git do repositório com `origin` apontando para ele (o repositório é público, então o endereço `https://github.com/leonardoopa/vote_count.git` basta) e com o `.env` já criado. Alterações feitas à mão em arquivos versionados na VPS somem a cada deploy (o `.env` não: o git o ignora).
+6. **Teste**: Actions > Deploy > Run workflow (deixe o commit vazio para usar a ponta da `main`). O workflow só dispara sozinho depois que `deploy.yml` estiver na `main`.
+
+**Rollback.** Automático se o contêiner não ficar saudável. Para voltar de propósito a um commit antigo da `main`: Actions > Deploy > Run workflow e cole o SHA completo (40 caracteres) dele. Ou, direto na VPS, na pasta do projeto: `bash deploy/deploy.sh <sha> "$PWD"` (`FORCAR=1` refaz mesmo que o commit já esteja no ar).
+
+**Desligar.** Crie a variável `DEPLOY_AUTOMATICO` com o valor `false` (vale também para o disparo manual) e apague-a para religar. Para cortar o acesso de vez, remova a linha da chave do `authorized_keys` da VPS ou apague os secrets.
+
 ### No terminal
 
 ```bash
@@ -245,7 +279,11 @@ Na página (só presidente), o card **Mapa-múndi** mostra os países coloridos 
 
 ### Anúncio no topo
 
-`GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link"}` (o `link` só vem se for válido). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`) e `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`. A configuração é lida na partida: mudou, reinicie.
+`GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link", "imagem"}` (`link` e `imagem` só vêm se forem válidos; `link` pode ser o `wa.me` montado por `ANUNCIO_WHATSAPP`). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`), `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível) e `ANUNCIO_IMAGEM` (opcional, também `http://` ou `https://`). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`; com link, a faixa toda (imagem e texto) é um link só.
+
+Para o clique abrir uma conversa de WhatsApp, use `ANUNCIO_WHATSAPP` (o número com o código do país, por exemplo `5581999999999`, com ou sem pontuação) e, se quiser, `ANUNCIO_WHATSAPP_MENSAGEM` (até 200 caracteres, a conversa abre com ela já escrita; há uma padrão). O servidor monta `https://wa.me/<número>?text=<mensagem>`. Se `ANUNCIO_LINK` também existir, ele vale mais. O número fica no `.env` da máquina e nunca vai para o repositório.
+
+Com `ANUNCIO_IMAGEM`, o banner aparece acima do texto, na largura da página (cabe até uns 970x90; a altura máxima é 160 px e a imagem nunca é cortada). O texto continua logo abaixo, sempre com o rótulo, para quem não vê a imagem. Se a imagem não carregar, ela some e fica a faixa de texto. A faixa fica fixa no topo enquanto a página rola (`position: sticky`); em celular deitado, com menos de 560 px de altura, ela rola junto com a página. **Atenção:** quem visita a página baixa a imagem direto do endereço informado (sem enviar o `Referer`), então use um endereço seu, e não de um serviço que registre acessos. A configuração é lida na partida: mudou, reinicie.
 
 ## Regras de acesso do TSE
 
@@ -324,6 +362,8 @@ anuncio.py         faixa de anúncio no topo
 tools/             geradores dos desenhos do mapa (IBGE)
 tse_falso.py       TSE de mentira para demonstração e testes
 test_*.py          testes (unittest)
+deploy/            deploy.sh: o que roda na VPS no deploy automático
+.github/workflows/  ci.yml (testes) e deploy.yml (deploy na VPS quando a CI passa na main)
 Dockerfile         imagem da página web
 compose.yaml       sobe a página web com Docker
 Makefile           atalhos: make up, make web, make teste

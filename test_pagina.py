@@ -53,6 +53,12 @@ class Pagina(unittest.TestCase):
             self.assertNotRegex(texto, r"url\(\s*['\"]?(?:https?:)?//")
             self.assertNotRegex(texto, r"\b(?:src|action)=[\"'](?:https?:)?//")
 
+    def test_scripts_nunca_montam_html_de_texto(self):
+        """Texto do anúncio, nomes e endereços entram por textContent e atributos: nada de montar HTML na mão."""
+        for nome in ARQUIVOS_JS:
+            with self.subTest(script=nome):
+                self.assertNotRegex((WEB / "js" / f"{nome}.js").read_text(encoding="utf-8"), r"innerHTML|outerHTML|insertAdjacentHTML|document\.write")
+
     def test_todo_script_da_pasta_esta_na_pagina(self):
         em_disco = sorted(arquivo.stem for arquivo in (WEB / "js").glob("*.js"))
         self.assertEqual(em_disco, sorted(ARQUIVOS_JS))

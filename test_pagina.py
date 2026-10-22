@@ -197,6 +197,32 @@ class GerarMapa(unittest.TestCase):
         self.assertRegex(texto, r'\n  rj: \{"d":"M[^"]+z","c"')
         self.assertEqual(texto.count('"d":"M'), 2)  # a ilha minúscula do RJ some
 
+    def test_mundo_so_com_paises_de_codigo_iso_e_sem_antartida(self):
+        def pais(iso, nome, x, y, lado, nome_en="x"):
+            quadrado = [[x, y], [x + lado, y], [x + lado, y + lado], [x, y + lado], [x, y]]
+            return {"properties": {"ISO_A2_EH": iso, "NAME_PT": nome, "NAME": nome_en}, "geometry": {"type": "Polygon", "coordinates": [quadrado]}}
+
+        malha = {"features": [
+            pais("BR", "Brasil", -60, -20, 25), pais("SG", "Singapura", 103.6, 1.2, 0.3),   # minúsculo: não pode sumir
+            pais("AQ", "Antártida", -60, -80, 20), pais("-9", "Sem código", 0, 0, 5), pais("-99", "Sem código", 10, 10, 5),
+            {"properties": {"ISO_A2_EH": "ID", "NAME_PT": "Indonésia"}, "geometry": {"type": "MultiPolygon", "coordinates": [
+                [[[100, -5], [110, -5], [110, 5], [100, 5], [100, -5]]], [[[120, -1], [120.05, -1], [120.05, -0.95], [120, -0.95], [120, -1]]]]}},
+        ]}
+        largura, altura, formas, nomes = gerar_mapa.converter_mundo(malha)
+        self.assertEqual(largura, gerar_mapa.LARGURA_MUNDO)
+        self.assertEqual(sorted(formas), ["BR", "ID", "SG"])
+        self.assertEqual(nomes, {"BR": "Brasil", "ID": "Indonésia", "SG": "Singapura"})
+        self.assertTrue(all(d.startswith("M") and d.endswith("z") for d in formas.values()))
+        self.assertEqual(formas["ID"].count("M"), 1)        # a ilhota some, a ilha grande fica
+        self.assertGreater(altura, 0)
+
+    def test_miller_afasta_menos_os_polos_que_mercator(self):
+        x, y = gerar_mapa.miller(180, 0)
+        self.assertAlmostEqual(x, 3.14159, places=4)
+        self.assertEqual(round(y, 6), 0)
+        self.assertLess(gerar_mapa.miller(0, 80)[1], 3.0)
+        self.assertLess(gerar_mapa.miller(0, -30)[1], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

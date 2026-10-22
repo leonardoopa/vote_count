@@ -10,12 +10,17 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_ROOT_USER_ACTION=ignore
 
 RUN useradd --create-home --uid 10001 app
+# Histórico da apuração. O volume nomeado do compose herda este dono na primeira vez que é montado,
+# então o usuário `app` consegue gravar mesmo com `read_only: true`.
+RUN mkdir /dados && chown app /dados
+ENV HISTORICO_DIR=/dados
 WORKDIR /app
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY contador.py servidor.py index.html ./
+COPY contador.py servidor.py anuncio.py compartilhar.py deputados.py historico.py imagem.py mapa.py municipios.py varredura.py index.html sw.js ./
+COPY geo ./geo
 USER app
 
 EXPOSE 8000

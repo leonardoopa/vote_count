@@ -10,15 +10,25 @@ de pessoas na página (o TSE bloqueia o IP que passar do limite).
 """
 import argparse
 import json
+import os
+import re
 import signal
 import threading
 import time
 from collections import OrderedDict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
+import anuncio
+import compartilhar
 import contador
+import deputados
+import historico
+import imagem
+import mapa
+import municipios
+import varredura
 
 PAGINA = Path(__file__).with_name("index.html")
 
@@ -36,6 +46,7 @@ LIMITE_BUSCAS_POR_SEGUNDO = 20
 MAX_ENTRADAS = 400
 TTL_MUNICIPIOS = 6 * 3600  # a lista de cidades não muda durante a apuração
 TOP_PADRAO, TOP_MAXIMO = 15, 100
+DISPUTAS_MAXIMO = 27  # todas as UFs; a página mostra as mais apertadas primeiro
 
 
 class Entrada:
@@ -68,6 +79,12 @@ class Cache:
             if agora >= entrada.valido_ate:
                 self._atualizar(url, entrada, agora, ttl)
             return entrada.dados, entrada.status, entrada.verificado_em
+
+    def espiar(self, url):
+        """Dados já guardados para a URL. Não consulta o TSE nem muda a ordem de uso das entradas."""
+        with self._trava:
+            entrada = self._entradas.get(url)
+        return entrada.dados if entrada else None
 
     def _limite_404(self, agora):
         while self._erros_404 and agora - self._erros_404[0] > 60:
@@ -239,6 +256,7 @@ def resultado(consulta):
     dados, status, verificado_em = CACHE.obter(url)
     if dados is None:
         return erro_do_tse(status, "O TSE ainda não publicou o resultado desta seleção (ou o cargo não é disputado nesta UF).")
+    HISTORICO.registrar((ambiente, cargo, uf, turno, municipio), dados)  # só memória e disco: o histórico nunca consulta o TSE
     corpo = resumir(dados, top)
     corpo["ambiente"] = ambiente
     corpo["municipio"] = {"codigo": cidade["codigo"], "nome": cidade["nome"]} if cidade else None
@@ -248,28 +266,441 @@ def resultado(consulta):
     return 200, corpo
 
 
+# Rotas JSON da API: caminho -> função(consulta) que devolve (status HTTP, corpo). Cada recurso novo
+# escreve a sua função na seção abaixo e registra a rota aqui, sem mexer no Handler.
+ROTAS_API = {
+    "/api/resultado": resultado,
+    "/api/municipios": municipios_da_uf,
+}
+
+# ---- histórico e atualizações ----
+
+# Um ponto do placar a cada totalização nova, por seleção. `resultado()` registra o que já tem no
+# cache; as rotas abaixo só leem o que foi guardado, então nunca consultam o TSE.
+HISTORICO = historico.do_ambiente()
+
+
+def chave_do_historico(consulta):
+    """(chave da série, None) ou (None, (status HTTP, corpo)) quando a seleção não pode ter histórico."""
+    try:
+        cargo, uf, ambiente, turno, _ = validar(consulta)
+        municipio = validar_municipio(consulta, uf)
+    except ValueError as erro:
+        return None, (400, {"erro": str(erro)})
+    if cargo not in historico.CARGOS:
+        return None, (400, {"erro": "o histórico só existe para presidente, governador e senador"})
+    return (ambiente, cargo, uf, turno, municipio), None
+
+
+def historico_da_selecao(consulta):
+    chave, erro = chave_do_historico(consulta)
+    return erro or (200, HISTORICO.consultar(chave))
+
+
+def atualizacoes_da_selecao(consulta):
+    chave, erro = chave_do_historico(consulta)
+    return erro or (200, HISTORICO.atualizacoes(chave))
+
+
+ROTAS_API.update({
+    "/api/historico": historico_da_selecao,
+    "/api/atualizacoes": atualizacoes_da_selecao,
+})
+
+
+# ---- mapa, regiões e anúncio ----
+
+# Faixa de publicidade do topo: configurada por variáveis de ambiente e lida só na partida.
+ANUNCIO = anuncio.do_ambiente()
+
+# Uma resposta pronta por seleção: vários visitantes dividem o mesmo mapa em vez de cada um abrir
+# a sua rodada de consultas (são 29 arquivos por rodada). Poucas chaves: ambiente x cargo x turno.
+TTL_RESPOSTA_MAPA = 5
+_PRONTAS, _TRAVAS_PRONTAS, _TRAVA_GERAL = {}, {}, threading.Lock()
+
+
+def lembrar(chave, construir, ttl=TTL_RESPOSTA_MAPA):
+    """(status, corpo) de `construir()`, refeito no máximo a cada `ttl` segundos por chave."""
+    with _TRAVA_GERAL:
+        trava = _TRAVAS_PRONTAS.setdefault(chave, threading.Lock())
+    with trava:  # quem chega com a resposta vencida refaz; os outros esperam e reaproveitam
+        pronta = _PRONTAS.get(chave)
+        if pronta is None or time.time() >= pronta[0]:
+            status, corpo = construir()
+            pronta = _PRONTAS[chave] = (time.time() + ttl, status, corpo)
+        return pronta[1], pronta[2]
+
+
+def validar_mapa(consulta, cargos=("presidente", "governador")):
+    """(cargo, ambiente, turno) do mapa: a validação é a de `validar`, que pede uma UF; o mapa usa todas."""
+    cargo = consulta.get("cargo", ["presidente"])[0]
+    if cargo not in cargos:
+        raise ValueError("este recurso só existe para " + " e ".join(cargos))
+    _, _, ambiente, turno, _ = validar({**consulta, "uf": ["br" if cargo == "presidente" else "sp"]})
+    return cargo, ambiente, turno
+
+
+def resumo_do_cargo(cargo, ambiente, turno):
+    """(status, corpo) do resumo por UF: uma rodada de consultas que mapa, regiões e disputas dividem."""
+    def construir():
+        corpo, falha = mapa.resumo_por_uf(CACHE.obter, ambiente, cargo, turno)
+        return erro_do_tse(*falha) if falha else (200, corpo)
+
+    return lembrar(("mapa", ambiente, cargo, turno), construir)
+
+
+def mapa_por_uf(consulta):
+    """Devolve (status HTTP, corpo JSON) com o líder de cada UF, para o mapa do Brasil."""
+    try:
+        cargo, ambiente, turno = validar_mapa(consulta)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    return resumo_do_cargo(cargo, ambiente, turno)
+
+
+def derivado(consulta, cargos, funcao):
+    """Corpo de uma rota que só reorganiza o resumo por UF (regiões, disputas): sem consulta nova ao TSE."""
+    try:
+        cargo, ambiente, turno = validar_mapa(consulta, cargos)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    status, corpo = resumo_do_cargo(cargo, ambiente, turno)
+    return (status, funcao(corpo)) if status == 200 else (status, corpo)
+
+
+def regioes_do_pais(consulta):
+    return derivado({**consulta, "cargo": ["presidente"]}, ("presidente",), mapa.regioes)
+
+
+def disputas_apertadas(consulta):
+    return derivado(consulta, ("governador", "senador"), lambda corpo: mapa.disputas(corpo, limite=DISPUTAS_MAXIMO))
+
+
+ROTAS_API.update({
+    "/api/anuncio": lambda consulta: (200, ANUNCIO),
+    "/api/mapa": mapa_por_uf,
+    "/api/regioes": regioes_do_pais,
+    "/api/disputas": disputas_apertadas,
+})
+
+
+# ---- hemiciclo e mais votados ----
+
+# Recursos que precisam de dezenas de arquivos do TSE (os deputados de cada UF) são servidos pelo varredor:
+# uma thread, poucas buscas por segundo no total, só enquanto alguém olha. 0 desliga esses recursos.
+BUSCAS_EXTRAS_POR_SEGUNDO = float(os.environ.get("BUSCAS_EXTRAS_POR_SEGUNDO", "2") or 0)
+VARREDOR = varredura.Varredor(BUSCAS_EXTRAS_POR_SEGUNDO)
+RECURSO_DESLIGADO = (503, {"erro": "Este recurso está desligado neste servidor (BUSCAS_EXTRAS_POR_SEGUNDO=0)."})
+FAMILIAS = {"deputado-federal": "federal", "deputado-estadual": "estadual", "deputado-distrital": "estadual"}
+
+
+def cargo_da_familia(familia, uf):
+    """Federal: um cargo em todas as UFs. Estadual: o do DF é o distrital."""
+    return "deputado-federal" if familia == "federal" else "deputado-distrital" if uf == "df" else "deputado-estadual"
+
+
+def painel_de_deputados(consulta, familia, montar):
+    """(status, corpo) de um recurso feito com os arquivos de deputados de todas as UFs. `montar` recebe {uf: resumo}."""
+    ambiente = consulta.get("ambiente", ["oficial"])[0]
+    if ambiente not in contador.AMBIENTES:
+        return 400, {"erro": "ambiente inválido"}
+
+    def fabrica():
+        trabalhos = {uf: varredura.Trabalho(uf, contador.montar_url(ambiente, cargo_da_familia(familia, uf), uf, 1)) for uf in contador.UFS}
+        return trabalhos, deputados.resumir_arquivo, deputados.intervalo
+
+    grupo = VARREDOR.pedir(("deputados", ambiente, familia), fabrica)
+    if grupo is None:
+        return RECURSO_DESLIGADO
+    fotos = VARREDOR.resumos(grupo)
+    corpo = montar({uf: foto[0] for uf, foto in fotos.items()})
+    verificados = [foto[1] for foto in fotos.values() if foto[0]]
+    corpo.update(ambiente=ambiente, idade_s=round(VARREDOR.relogio() - min(verificados)) if verificados else None)
+    return 200, corpo
+
+
+def camara_dos_deputados(consulta):
+    return painel_de_deputados(consulta, "federal", deputados.camara)
+
+
+def mais_votados(consulta):
+    cargo = consulta.get("cargo", ["deputado-federal"])[0]
+    if cargo not in FAMILIAS:
+        return 400, {"erro": "só deputado federal, estadual ou distrital têm ranking de mais votados"}
+    status, corpo = painel_de_deputados(consulta, FAMILIAS[cargo], deputados.mais_votados)
+    return status, {**corpo, "cargo": cargo} if status == 200 else corpo
+
+
+def senado_em_disputa(consulta):
+    return derivado({**consulta, "cargo": ["senador"]}, ("senador",), mapa.senado)
+
+
+ROTAS_API.update({
+    "/api/camara": camara_dos_deputados,
+    "/api/maisvotados": mais_votados,
+    "/api/senado": senado_em_disputa,
+})
+
+
+# ---- mapa por município ----
+
+GEO = Path(__file__).with_name("geo")  # desenhos dos municípios, um arquivo por UF (tools/gerar_mapa.py --municipios)
+ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2})\.json$")
+
+
+def mapa_municipal(consulta):
+    """(status, corpo) com o líder de cada cidade da UF. As cidades são buscadas aos poucos pelo varredor."""
+    try:
+        cargo, uf, ambiente, turno, _ = validar(consulta)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    if cargo not in ("presidente", "governador") or uf == "br":
+        return 400, {"erro": "o mapa por município existe para presidente e governador, dentro de um estado"}
+    if not VARREDOR.ligado:
+        return RECURSO_DESLIGADO
+    lista, falha = cidades_da_uf(ambiente, cargo, turno, uf)
+    if falha:
+        return falha
+    # Só varre se o arquivo da UF existe: no 2º turno de governador, UF sem 2º turno daria 404 em todas as cidades.
+    dados, status, _ = CACHE.obter(contador.montar_url(ambiente, cargo, uf, turno))
+    if dados is None:
+        return erro_do_tse(status, "O TSE ainda não publicou o resultado desta seleção (ou o cargo não é disputado neste estado).")
+    ibge = municipios.ibge_das_cidades(CACHE.espiar(contador.url_municipios(ambiente, cargo, turno)) or {}, uf)
+
+    def fabrica():
+        trabalhos = {c["codigo"]: varredura.Trabalho(c["codigo"], contador.montar_url(ambiente, cargo, uf, turno, municipio=c["codigo"])) for c in lista}
+        return trabalhos, municipios.resumir_cidade, municipios.intervalo
+
+    grupo = VARREDOR.pedir(("cidades", ambiente, cargo, turno, uf), fabrica)
+    corpo = municipios.montar(uf, lista, ibge, VARREDOR.resumos(grupo), VARREDOR.relogio())
+    corpo.update(cargo=cargo, turno=turno, ambiente=ambiente)
+    return 200, corpo
+
+
+def desenho_dos_municipios(caminho):
+    """(status, tipo, corpo, extras) do arquivo geo/<uf>.json, ou None se o caminho não é de um desenho."""
+    achado = ARQUIVO_GEO.match(caminho)
+    if not achado or achado[1] not in contador.UFS:
+        return None
+    arquivo = GEO / f"{achado[1]}.json"
+    if not arquivo.is_file():
+        return 404, "text/plain; charset=utf-8", b"desenho indisponivel", {}
+    return 200, "application/json; charset=utf-8", arquivo.read_bytes(), {"Cache-Control": "public, max-age=86400"}
+
+
+ROTAS_API["/api/mapa-municipal"] = mapa_municipal
+
+
+# ---- busca rápida ----
+
+MAX_BUSCA = 40        # caracteres do termo
+MAX_RESULTADOS = 10   # cidades devolvidas
+_INDICE = (None, [])  # (arquivo de cidades do TSE, [(uf, código, nome, nome sem acento, capital)])
+
+
+def indice_de_cidades(config):
+    """Cidades de todas as UFs já sem acento, guardadas enquanto o arquivo do TSE no cache for o mesmo."""
+    global _INDICE
+    if _INDICE[0] is not config:
+        lista = [
+            (abr["cd"], m["cd"], contador.nome_proprio(m["nm"]), contador.sem_acento(m["nm"]), m.get("c") == "s")
+            for abr in config.get("abr", []) if abr.get("cd") in contador.UFS
+            for m in abr.get("mu", [])
+        ]
+        _INDICE = (config, lista)
+    return _INDICE[1]
+
+
+def buscar_cidades(config, cargo, termo, limite=MAX_RESULTADOS):
+    """Cidades cujo nome contém o termo (sem diferenciar acento nem caixa). Quem começa com o termo vem primeiro."""
+    alvo = contador.sem_acento(termo)
+    if len(alvo) < 2:
+        return []
+    achadas = []
+    for uf, codigo, nome, normal, capital in indice_de_cidades(config):
+        posicao = normal.find(alvo)
+        if posicao < 0 or not contador.uf_valida(cargo, uf):
+            continue
+        rank = 0 if posicao == 0 else 1 if normal[posicao - 1] == " " else 2
+        achadas.append(((rank, not capital, len(normal), normal, uf), {"uf": uf, "codigo": codigo, "nome": nome, "capital": capital}))
+    achadas.sort(key=lambda par: par[0])
+    return [cidade for _, cidade in achadas[:limite]]
+
+
+def busca_rapida(consulta):
+    """Devolve (status HTTP, corpo JSON) com as cidades que combinam com `q`. A lista vem do cache: sem consulta nova."""
+    cargo = consulta.get("cargo", ["presidente"])[0]
+    uf = "br" if cargo == "presidente" else "df" if cargo == "deputado-distrital" else "sp"
+    try:
+        cargo, _, ambiente, _, _ = validar({**consulta, "uf": [uf], "turno": ["1"]})
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    termo = consulta.get("q", [""])[0]
+    if len(termo) > MAX_BUSCA:
+        return 400, {"erro": "termo de busca longo demais"}
+    if len(contador.sem_acento(termo)) < 2:
+        return 200, {"cidades": []}
+    # a lista de cidades é a mesma em qualquer turno: o 1º turno sempre existe
+    config, status, _ = CACHE.obter(contador.url_municipios(ambiente, cargo, 1), ttl=TTL_MUNICIPIOS)
+    if config is None:
+        return erro_do_tse(status, "O TSE não publicou a lista de cidades desta eleição.")
+    return 200, {"cidades": buscar_cidades(config, cargo, termo)}
+
+
+ROTAS_API["/api/busca"] = busca_rapida
+
+
+# ---- compartilhar e app instalável ----
+
+URL_PUBLICA = os.environ.get("URL_PUBLICA", "")  # ex.: https://votos.exemplo.com.br; sem ela, vale o Host da requisição
+MARCA_DO_HEAD = "<!-- bloco: pwa e prévia de compartilhamento (head) -->"
+SERVICE_WORKER = Path(__file__).with_name("sw.js")
+TTL_CARTAO = 60
+MAX_CARTOES = 64
+_CARTOES = OrderedDict()  # chave da seleção + totalização -> (vale até, PNG)
+_TRAVA_CARTOES = threading.Lock()
+_ICONES = {}
+MANIFESTO = {
+    "name": compartilhar.NOME_DO_SITE, "short_name": "Votos 2026", "lang": "pt-BR", "start_url": "/", "scope": "/",
+    "description": compartilhar.DESCRICAO_PADRAO, "display": "standalone",
+    "background_color": "#0d0d0d", "theme_color": "#0d0d0d",
+    "icons": [
+        {"src": "/icone-192.png", "sizes": "192x192", "type": "image/png"},
+        {"src": "/icone-512.png", "sizes": "512x512", "type": "image/png"},
+        {"src": "/icone-512-mascara.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    ],
+}
+
+
+def selecao_da_consulta(consulta):
+    """(cargo, uf, ambiente, turno, município) de uma query válida, ou None."""
+    try:
+        cargo, uf, ambiente, turno, _ = validar(consulta)
+        return cargo, uf, ambiente, turno, validar_municipio(consulta, uf)
+    except ValueError:
+        return None
+
+
+def consulta_canonica(cargo, uf, ambiente, turno, municipio):
+    """A query do link, só com valores já validados e sempre na mesma ordem."""
+    campos = [("cargo", cargo), ("uf", uf), ("turno", turno)]
+    if ambiente != "oficial":
+        campos.append(("ambiente", ambiente))
+    if municipio:
+        campos.append(("municipio", municipio))
+    return urlencode(campos)
+
+
+def nome_da_cidade(ambiente, cargo, turno, uf, municipio):
+    """Nome da cidade se a lista do TSE já está no cache (nunca consulta o TSE para isso)."""
+    config = CACHE.espiar(contador.url_municipios(ambiente, cargo, turno))
+    achada = next((m for m in contador.municipios(config, uf) if m["codigo"] == municipio), None) if config else None
+    return achada["nome"] if achada else None
+
+
+def pagina(consulta, cabecalhos):
+    """index.html com as meta tags da seleção do link (WhatsApp, X e outros leem o HTML, não o JavaScript)."""
+    base = compartilhar.base_publica(URL_PUBLICA, cabecalhos)
+    selecao = selecao_da_consulta(consulta) if "cargo" in consulta or "uf" in consulta else None
+    if selecao is None:
+        meta = compartilhar.meta_tags(base, "")
+    else:
+        cargo, uf, ambiente, turno, municipio = selecao
+        cidade = nome_da_cidade(ambiente, cargo, turno, uf, municipio) if municipio else None
+        dados = CACHE.espiar(contador.montar_url(ambiente, cargo, uf, turno, municipio=municipio or None))
+        descricao = compartilhar.descricao_do_placar(resumir(dados, 3) if dados else None)
+        meta = compartilhar.meta_tags(base, consulta_canonica(*selecao), compartilhar.titulo_da_selecao(cargo, uf, turno, cidade), descricao)
+    return PAGINA.read_text(encoding="utf-8").replace(MARCA_DO_HEAD, meta, 1).encode()
+
+
+def cartao_do_placar(consulta, cabecalhos=None):
+    """(status, tipo, corpo, cabeçalhos extras) da imagem de prévia. Sem dados ainda, a imagem só traz o título."""
+    selecao = selecao_da_consulta(consulta)
+    if selecao is None:
+        return 400, "text/plain; charset=utf-8", b"selecao invalida", {}
+    cargo, uf, ambiente, turno, municipio = selecao
+    cidade = None
+    if municipio:
+        # só código que o TSE lista para esta UF vira URL (evita 404 em série, como em `resultado`)
+        lista, falha = cidades_da_uf(ambiente, cargo, turno, uf)
+        cidade = next((m for m in lista or [] if m["codigo"] == municipio), None)
+        if falha or cidade is None:
+            return 400, "text/plain; charset=utf-8", b"municipio invalido", {}
+    dados, _, _ = CACHE.obter(contador.montar_url(ambiente, cargo, uf, turno, municipio=municipio or None))
+    resumo = resumir(dados, compartilhar.MAX_CANDIDATOS_NA_IMAGEM) if dados else None
+    chave = (selecao, resumo["ultima_totalizacao"] if resumo else "", resumo["secoes"]["apuradas"] if resumo else 0, resumo["final"] if resumo else False)
+    with _TRAVA_CARTOES:
+        agora = time.time()
+        pronto = _CARTOES.get(chave)
+        if pronto is None or pronto[0] < agora:
+            titulo = compartilhar.titulo_da_selecao(cargo, uf, turno, cidade["nome"] if cidade else None)
+            pronto = _CARTOES[chave] = (agora + TTL_CARTAO, compartilhar.cartao(titulo, resumo, ambiente))
+            while len(_CARTOES) > MAX_CARTOES:
+                _CARTOES.popitem(last=False)
+        _CARTOES.move_to_end(chave)
+    return 200, "image/png", pronto[1], {"Cache-Control": "public, max-age=60"}
+
+
+def icone(lado, mascara=False):
+    def rota(consulta, cabecalhos=None):
+        if (lado, mascara) not in _ICONES:
+            _ICONES[(lado, mascara)] = imagem.icone(lado, mascara)
+        return 200, "image/png", _ICONES[(lado, mascara)], {"Cache-Control": "public, max-age=86400"}
+    return rota
+
+
+def arquivo_estatico(caminho, tipo):
+    def rota(consulta, cabecalhos=None):
+        return 200, tipo, caminho.read_bytes(), {}
+    return rota
+
+
+# Rotas que não são JSON: caminho -> função(consulta, cabeçalhos) que devolve (status, tipo, corpo, cabeçalhos extras).
+ROTAS_ARQUIVO = {
+    "/og.png": cartao_do_placar,
+    "/icone-192.png": icone(192),
+    "/icone-512.png": icone(512),
+    "/icone-512-mascara.png": icone(512, mascara=True),
+    "/manifest.webmanifest": lambda consulta, cabecalhos=None: (
+        200, "application/manifest+json; charset=utf-8", json.dumps(MANIFESTO, ensure_ascii=False).encode(), {"Cache-Control": "public, max-age=3600"}),
+    "/sw.js": arquivo_estatico(SERVICE_WORKER, "text/javascript; charset=utf-8"),
+}
+
+
 class Handler(BaseHTTPRequestHandler):
-    def _enviar(self, status, tipo, corpo):
+    def _enviar(self, status, tipo, corpo, extras=None):
         self.send_response(status)
         self.send_header("Content-Type", tipo)
         self.send_header("Content-Length", str(len(corpo)))
-        self.send_header("Cache-Control", "no-store")
+        extras = extras or {}
+        if "Cache-Control" not in extras:
+            self.send_header("Cache-Control", "no-store")
+        for nome, valor in extras.items():
+            self.send_header(nome, valor)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
-        self.wfile.write(corpo)
+        if self.command != "HEAD":
+            self.wfile.write(corpo)
 
     def do_GET(self):
         url = urlparse(self.path)
+        consulta = parse_qs(url.query)
         if url.path == "/":
-            self._enviar(200, "text/html; charset=utf-8", PAGINA.read_bytes())
-        elif url.path in ("/api/resultado", "/api/municipios"):
-            funcao = resultado if url.path == "/api/resultado" else municipios_da_uf
-            status, corpo = funcao(parse_qs(url.query))
+            self._enviar(200, "text/html; charset=utf-8", pagina(consulta, self.headers))
+        elif url.path in ROTAS_API:
+            status, corpo = ROTAS_API[url.path](consulta)
             self._enviar(status, "application/json; charset=utf-8", json.dumps(corpo, ensure_ascii=False).encode())
+        elif url.path in ROTAS_ARQUIVO:
+            status, tipo, corpo, extras = ROTAS_ARQUIVO[url.path](consulta, self.headers)
+            self._enviar(status, tipo, corpo, extras)
         elif url.path == "/saude":
             self._enviar(200, "text/plain; charset=utf-8", b"ok")
+        elif (desenho := desenho_dos_municipios(url.path)) is not None:
+            self._enviar(*desenho)
         else:
             self._enviar(404, "text/plain; charset=utf-8", b"nao encontrado")
+
+    do_HEAD = do_GET  # mesmos cabeçalhos, sem corpo (alguns verificadores de link usam HEAD)
 
     def log_request(self, code="-", size="-"):  # sem log das consultas normais (a página consulta a cada 15s)
         if str(code).isdigit() and int(code) >= 400:

@@ -3,13 +3,16 @@ PORTA ?= 8000
 export PORTA
 
 .DEFAULT_GOAL := ajuda
-.PHONY: ajuda web terminal teste up down logs
+.PHONY: ajuda web demo terminal teste up down logs
 
 ajuda: ## lista os comandos
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-9s %s\n", $$1, $$2}'
 
 web: ## página web local, sem Docker (porta 8000 ou a do .env)
 	python3 servidor.py --porta $(PORTA)
+
+demo: ## página com TSE falso e apuração que avança sozinha (sem rede)
+	python3 tse_falso.py --porta $(PORTA)
 
 terminal: ## placar no terminal (presidente, Brasil)
 	python3 contador.py

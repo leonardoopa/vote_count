@@ -18,7 +18,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import anuncio
 import contador
+import historico
+import mapa
 
 PAGINA = Path(__file__).with_name("index.html")
 
@@ -248,6 +251,19 @@ def resultado(consulta):
     return 200, corpo
 
 
+# Rotas JSON da API: caminho -> função(consulta) que devolve (status HTTP, corpo). Cada recurso novo
+# escreve a sua função na seção abaixo e registra a rota aqui, sem mexer no Handler.
+ROTAS_API = {
+    "/api/resultado": resultado,
+    "/api/municipios": municipios_da_uf,
+}
+
+# ---- histórico e atualizações ----
+
+
+# ---- mapa, regiões e anúncio ----
+
+
 class Handler(BaseHTTPRequestHandler):
     def _enviar(self, status, tipo, corpo):
         self.send_response(status)
@@ -262,9 +278,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path == "/":
             self._enviar(200, "text/html; charset=utf-8", PAGINA.read_bytes())
-        elif url.path in ("/api/resultado", "/api/municipios"):
-            funcao = resultado if url.path == "/api/resultado" else municipios_da_uf
-            status, corpo = funcao(parse_qs(url.query))
+        elif url.path in ROTAS_API:
+            status, corpo = ROTAS_API[url.path](parse_qs(url.query))
             self._enviar(status, "application/json; charset=utf-8", json.dumps(corpo, ensure_ascii=False).encode())
         elif url.path == "/saude":
             self._enviar(200, "text/plain; charset=utf-8", b"ok")

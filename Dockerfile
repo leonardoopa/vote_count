@@ -15,7 +15,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY contador.py servidor.py index.html ./
+COPY contador.py servidor.py anuncio.py historico.py mapa.py index.html ./
 USER app
 
 EXPOSE 8000

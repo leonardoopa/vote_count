@@ -6,6 +6,7 @@
 <title>Contador de votos 2026</title>
 <meta name="description" content="Acompanhe a totalização das Eleições 2026 em tempo real, com dados oficiais do TSE.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 17l5 5 11-12' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<!-- bloco: pwa e prévia de compartilhamento (head) -->
 <style>
 :root {
   color-scheme: light;
@@ -21,6 +22,16 @@
   --track: #cde2fb;
   --good: #006300;
   --wash: rgba(11, 11, 11, 0.05);
+  /* cor por partido (posições da paleta categórica); veja COR_PARTIDO no script */
+  --p-azul: #2a78d6;
+  --p-laranja: #eb6834;
+  --p-agua: #1baf7a;
+  --p-amarelo: #eda100;
+  --p-magenta: #e87ba4;
+  --p-verde: #008300;
+  --p-violeta: #6250d6;
+  --p-vermelho: #e34948;
+  --p-outros: #898781;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -36,6 +47,13 @@
     --track: #0d366b;
     --good: #0ca30c;
     --wash: rgba(255, 255, 255, 0.06);
+    --p-azul: #3987e5;
+    --p-laranja: #d95926;
+    --p-agua: #199e70;
+    --p-amarelo: #c98500;
+    --p-magenta: #d55181;
+    --p-violeta: #9085e9;
+    --p-vermelho: #e66767;
   }
 }
 * { box-sizing: border-box; }
@@ -125,6 +143,12 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 .rodape p { margin: 4px 0; }
 .rodape a { color: inherit; }
 
+/* ===== bloco: evolução, replay e atualizações ===== */
+
+
+/* ===== bloco: mapa, regiões, disputas e anúncio ===== */
+
+
 @media (max-width: 640px) {
   .heroi .valor { font-size: 3rem; }
   .linha {
@@ -147,6 +171,7 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 </head>
 <body>
 <div class="pagina">
+  <!-- bloco: anúncio (faixa de publicidade no topo) -->
   <header class="cabecalho">
     <div>
       <h1>Contador de votos · Eleições 2026</h1>
@@ -182,11 +207,19 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 
     <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
 
+    <!-- bloco: mapa do Brasil e painel por região -->
+
+    <!-- bloco: evolução da apuração e replay -->
+
     <section class="cartao" aria-labelledby="lista-h">
       <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
       <ol class="ranking" id="ranking"></ol>
       <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
     </section>
+
+    <!-- bloco: atualizações da apuração -->
+
+    <!-- bloco: disputas mais apertadas -->
   </main>
 
   <footer class="rodape">
@@ -196,6 +229,7 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
   </footer>
 </div>
 <div class="dica" id="dica" role="tooltip" hidden></div>
+<!-- bloco: busca rápida e comparação (sobreposições) -->
 <noscript><p style="padding:16px">Esta página precisa de JavaScript.</p></noscript>
 
 <script>
@@ -214,6 +248,16 @@ const UFS = {
   rj: "Rio de Janeiro", rn: "Rio Grande do Norte", ro: "Rondônia", rr: "Roraima", rs: "Rio Grande do Sul",
   sc: "Santa Catarina", se: "Sergipe", sp: "São Paulo", to: "Tocantins",
 };
+/* Cor por partido, a mesma no mapa e nos gráficos: a cor segue o partido, nunca a posição na lista.
+   PT em vermelho e PL em azul; as outras cores da paleta vão para partidos grandes e o resto cai em
+   "outros". A leitura nunca depende só da cor: há rótulos, legenda e tabela ao lado. */
+const COR_PARTIDO = {
+  PT: "vermelho", PL: "azul", REPUBLICANOS: "laranja", PSD: "agua",
+  PSB: "amarelo", PP: "magenta", MDB: "verde", UNIAO: "violeta",
+};
+const normalizarPartido = (partido) => partido.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const corDoPartido = (partido) => `var(--p-${COR_PARTIDO[normalizarPartido(partido)] || "outros"})`;
+
 const ATUALIZAR_A_CADA = 5000;
 const TOP_INICIAL = 15, TOP_PASSO = 30, TOP_MAXIMO = 100;
 
@@ -234,6 +278,16 @@ const estado = {
 let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0;
 let cidades = [];            // cidades da UF escolhida: [{codigo, nome, capital}]
 let sequenciaCidades = 0;
+
+/* Ganchos: cada bloco da página (mapa, evolução…) registra a sua função aqui e não mexe em
+   renderizar() nem em trocou(). Um erro num bloco não derruba o placar. */
+const aoRenderizar = [];    // (dados) depois que o placar foi pintado
+const aoMudarSelecao = [];  // () quando cargo, território, cidade, turno ou ambiente mudam
+const avisar = (ganchos, ...args) => {
+  for (const gancho of ganchos) {
+    try { gancho(...args); } catch (erro) { console.error(erro); }
+  }
+};
 
 function ufsDoCargo(cargo) {
   const todas = Object.keys(UFS);
@@ -292,7 +346,7 @@ async function carregarCidades() {
 async function atualizarCidades() {
   const antes = estado.municipio;
   await carregarCidades();
-  if (estado.municipio !== antes) { ultimo = null; carregar(); }
+  if (estado.municipio !== antes) { ultimo = null; carregar(); avisar(aoMudarSelecao); }
 }
 
 function escolherCidade() {
@@ -307,6 +361,7 @@ function escolherCidade() {
   ultimo = null;
   sincronizarFiltros();
   carregar();
+  avisar(aoMudarSelecao);
 }
 
 function titulo() {
@@ -414,6 +469,7 @@ function renderizar(d) {
   ultimo = d;
   recebidoEm = Date.now();
   atualizarTempo();
+  avisar(aoRenderizar, d);
 }
 
 function mostrarAviso(texto) {
@@ -482,6 +538,7 @@ function trocou(campo, valor) {
   }
   carregar();
   atualizarCidades();
+  avisar(aoMudarSelecao);
 }
 
 /* Tooltip: reforça a linha, nunca é a única forma de ler um valor. */
@@ -526,9 +583,16 @@ document.addEventListener("visibilitychange", () => {
 });
 setInterval(atualizarTempo, 1000);
 
+/* ===== bloco: evolução, replay e atualizações ===== */
+
+
+/* ===== bloco: mapa, regiões, disputas e anúncio ===== */
+
+
 sincronizarFiltros();
 carregar();
 atualizarCidades();
+avisar(aoMudarSelecao);
 </script>
 </body>
 </html>

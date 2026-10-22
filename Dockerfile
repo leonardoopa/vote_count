@@ -10,6 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_ROOT_USER_ACTION=ignore
 
 RUN useradd --create-home --uid 10001 app
+# Histórico da apuração. O volume nomeado do compose herda este dono na primeira vez que é montado,
+# então o usuário `app` consegue gravar mesmo com `read_only: true`.
+RUN mkdir /dados && chown app /dados
+ENV HISTORICO_DIR=/dados
 WORKDIR /app
 
 COPY requirements.txt ./

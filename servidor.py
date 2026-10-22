@@ -242,6 +242,7 @@ def resultado(consulta):
     dados, status, verificado_em = CACHE.obter(url)
     if dados is None:
         return erro_do_tse(status, "O TSE ainda não publicou o resultado desta seleção (ou o cargo não é disputado nesta UF).")
+    HISTORICO.registrar((ambiente, cargo, uf, turno, municipio), dados)  # só memória e disco: o histórico nunca consulta o TSE
     corpo = resumir(dados, top)
     corpo["ambiente"] = ambiente
     corpo["municipio"] = {"codigo": cidade["codigo"], "nome": cidade["nome"]} if cidade else None
@@ -259,6 +260,38 @@ ROTAS_API = {
 }
 
 # ---- histórico e atualizações ----
+
+# Um ponto do placar a cada totalização nova, por seleção. `resultado()` registra o que já tem no
+# cache; as rotas abaixo só leem o que foi guardado, então nunca consultam o TSE.
+HISTORICO = historico.do_ambiente()
+
+
+def chave_do_historico(consulta):
+    """(chave da série, None) ou (None, (status HTTP, corpo)) quando a seleção não pode ter histórico."""
+    try:
+        cargo, uf, ambiente, turno, _ = validar(consulta)
+        municipio = validar_municipio(consulta, uf)
+    except ValueError as erro:
+        return None, (400, {"erro": str(erro)})
+    if cargo not in historico.CARGOS:
+        return None, (400, {"erro": "o histórico só existe para presidente, governador e senador"})
+    return (ambiente, cargo, uf, turno, municipio), None
+
+
+def historico_da_selecao(consulta):
+    chave, erro = chave_do_historico(consulta)
+    return erro or (200, HISTORICO.consultar(chave))
+
+
+def atualizacoes_da_selecao(consulta):
+    chave, erro = chave_do_historico(consulta)
+    return erro or (200, HISTORICO.atualizacoes(chave))
+
+
+ROTAS_API.update({
+    "/api/historico": historico_da_selecao,
+    "/api/atualizacoes": atualizacoes_da_selecao,
+})
 
 
 # ---- mapa, regiões e anúncio ----

@@ -9,13 +9,13 @@ ajuda: ## lista os comandos
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-9s %s\n", $$1, $$2}'
 
 web: ## página web local, sem Docker (porta 8000 ou a do .env)
-	python3 servidor.py --porta $(PORTA)
+	python3 -m contador.servidor --porta $(PORTA)
 
 demo: ## página com TSE falso e apuração que avança sozinha (sem rede)
-	python3 tse_falso.py --porta $(PORTA)
+	python3 -m contador.demo --porta $(PORTA)
 
 terminal: ## placar no terminal (presidente, Brasil)
-	python3 contador.py
+	python3 -m contador
 
 teste: ## roda os testes
 	python3 -m unittest -v

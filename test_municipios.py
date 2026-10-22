@@ -191,7 +191,9 @@ class Desenhos(unittest.TestCase):
             self.assertEqual((status, tipo, extras["Cache-Control"]), (200, "application/json; charset=utf-8", "no-cache"))
             self.assertTrue(extras["ETag"].startswith('W/"'))
             desenho = json.loads(corpo)
-            self.assertEqual(set(desenho), {"w", "h", "m"})
+            self.assertEqual(set(desenho), {"w", "h", "m", "n"})
+            self.assertEqual(set(desenho["n"]), set(desenho["m"]))                     # todo município desenhado tem nome
+            self.assertTrue(all(isinstance(nome, str) and nome for nome in desenho["n"].values()))
             self.assertTrue(all(d.startswith("M") and d.endswith("z") for d in desenho["m"].values()))
             self.assertTrue(all(len(c) == 7 and c.isdigit() for c in desenho["m"]))  # código IBGE do município
 

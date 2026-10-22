@@ -2,14 +2,14 @@
 """Gera os contornos das UFs para o mapa da página, a partir da malha do IBGE.
 
     python3 tools/gerar_mapa.py > web/js/contornos-ufs.js   # baixa a malha do IBGE
-    python3 tools/gerar_mapa.py malha.geojson          # ou usa um arquivo já baixado
-    python3 tools/gerar_mapa.py --municipios web/geo   # um arquivo por UF, com os municípios, na pasta web/geo/
+    python3 tools/gerar_mapa.py malha.geojson               # ou usa um arquivo já baixado
+    python3 tools/gerar_mapa.py --municipios web/geo        # um arquivo por UF, com os municípios
 
-Saída do primeiro modo: um objeto JavaScript `{uf: {d: caminho SVG, c: [x, y], l: largura}}` pronto para
-gravar em web/js/contornos-ufs.js (constante MAPA_UFS), mais a linha com o tamanho do desenho. O modo `--municipios`
-grava `web/geo/<uf>.json` com `{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}}`, que o
-servidor entrega em /geo/<uf>.json para o mapa por município. Só biblioteca padrão. Roda uma vez por
-eleição; o servidor nunca acessa o IBGE.
+Saída do primeiro modo: o script `web/js/contornos-ufs.js`, com o objeto `{uf: {d: caminho SVG, c: [x, y], l: largura}}`
+(constante MAPA_UFS) e o tamanho do desenho. O modo `--municipios` grava `web/geo/<uf>.json` com
+`{"w": largura, "h": altura, "m": {código IBGE do município: caminho SVG}, "n": {código IBGE: nome}}`, que o
+servidor entrega em /geo/<uf>.json para o mapa por município. Os municípios saem com bastante detalhe porque
+o mapa dá zoom até uma cidade pequena. Só biblioteca padrão. Roda uma vez por eleição; o servidor nunca acessa o IBGE.
 """
 import gzip
 import json
@@ -19,7 +19,8 @@ import sys
 import urllib.request
 
 URL = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=UF"
-URL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{codigo}?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=municipio"
+URL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{codigo}?formato=application/vnd.geo%2Bjson&qualidade=intermediaria&intrarregiao=municipio"
+URL_NOMES = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/{codigo}/municipios"
 SIGLAS = {
     "11": "ro", "12": "ac", "13": "am", "14": "rr", "15": "pa", "16": "ap", "17": "to", "21": "ma", "22": "pi",
     "23": "ce", "24": "rn", "25": "pb", "26": "pe", "27": "al", "28": "se", "29": "ba", "31": "mg", "32": "es",
@@ -28,7 +29,8 @@ SIGLAS = {
 LARGURA = 1000     # unidades do desenho na horizontal
 TOLERANCIA = 1.0   # simplificação (unidades do desenho); quanto maior, menor o arquivo
 AREA_MINIMA = 12   # ilhas menores que isso (unidades²) somem
-TOLERANCIA_MUNICIPIOS = 0.7  # os municípios são pequenos: simplifica menos
+LARGURA_MUNICIPIOS = 4000    # unidades do desenho de cada UF: o mapa dá zoom, então os municípios têm mais resolução
+TOLERANCIA_MUNICIPIOS = 1.0  # em unidades do desenho (cerca de 200 m): os municípios são pequenos, simplifica pouco
 
 
 def aneis(geometria):
@@ -96,8 +98,9 @@ def converter(dados, chave_de, largura=LARGURA, tolerancia=TOLERANCIA, area_mini
     lons = [p[0] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
     lats = [p[1] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
     fator = math.cos(math.radians((min(lats) + max(lats)) / 2 if latitude is None else latitude))  # um grau de longitude vale menos que um de latitude
-    escala = largura / ((max(lons) - min(lons)) * fator)
-    projetar = lambda lon, lat: ((lon - min(lons)) * fator * escala, (max(lats) - lat) * escala)
+    esquerda, topo = min(lons), max(lats)
+    escala = largura / ((max(lons) - esquerda) * fator)
+    projetar = lambda lon, lat: ((lon - esquerda) * fator * escala, (topo - lat) * escala)
     saida = {}
     for feicao in dados["features"]:
         d, maior = [], (0, None, None)
@@ -126,15 +129,17 @@ def baixar(url):
     return json.loads(corpo)
 
 
-def gerar_municipios(pasta, baixar_malha=baixar):
-    """Um arquivo `<uf>.json` por UF com o desenho dos municípios. Devolve {uf: tamanho do arquivo em bytes}."""
+def gerar_municipios(pasta, baixar_malha=baixar, baixar_nomes=baixar):
+    """Um arquivo `<uf>.json` por UF com o desenho e o nome dos municípios. Devolve {uf: tamanho do arquivo em bytes}."""
     os.makedirs(pasta, exist_ok=True)
     tamanhos = {}
     for codigo, sigla in sorted(SIGLAS.items(), key=lambda par: par[1]):
         largura, altura, formas = converter(
             baixar_malha(URL_MUNICIPIOS.format(codigo=codigo)), lambda f: f["properties"]["codarea"],
-            tolerancia=TOLERANCIA_MUNICIPIOS, area_minima=0)
-        conteudo = json.dumps({"w": largura, "h": altura, "m": {c: f["d"] for c, f in sorted(formas.items())}}, separators=(",", ":"))
+            largura=LARGURA_MUNICIPIOS, tolerancia=TOLERANCIA_MUNICIPIOS, area_minima=0)
+        nomes = {str(m["id"]): m["nome"] for m in baixar_nomes(URL_NOMES.format(codigo=codigo))}
+        conteudo = json.dumps({"w": largura, "h": altura, "m": {c: f["d"] for c, f in sorted(formas.items())},
+                               "n": {c: nomes[c] for c in sorted(formas) if c in nomes}}, separators=(",", ":"), ensure_ascii=False)
         with open(os.path.join(pasta, f"{sigla}.json"), "w", encoding="utf-8") as arquivo:
             arquivo.write(conteudo)
         tamanhos[sigla] = len(conteudo.encode("utf-8"))

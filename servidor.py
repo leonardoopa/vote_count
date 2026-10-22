@@ -475,6 +475,7 @@ def mapa_municipal(consulta):
         return trabalhos, municipios.resumir_cidade, municipios.intervalo
 
     grupo = VARREDOR.pedir(("cidades", ambiente, cargo, turno, uf), fabrica)
+    VARREDOR.priorizar(grupo, municipios.codigos_em_foco(consulta.get("foco", [""])[0], ibge))
     corpo = municipios.montar(uf, lista, ibge, VARREDOR.resumos(grupo), VARREDOR.relogio())
     corpo.update(cargo=cargo, turno=turno, ambiente=ambiente)
     return 200, corpo

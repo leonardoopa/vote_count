@@ -8,6 +8,7 @@ import mapa
 
 INTERVALO_APURANDO_S = 120
 INTERVALO_FINAL_S = 1800
+MAX_FOCO = 60  # cidades que a página pode pedir para buscar primeiro
 
 
 def intervalo(resumo):
@@ -34,6 +35,21 @@ def ibge_das_cidades(config, uf):
         if abrangencia.get("cd") == uf:
             return {m["cd"]: m["cdi"] for m in abrangencia.get("mu", []) if m.get("cdi")}
     return {}
+
+
+def codigos_em_foco(foco, ibge):
+    """Códigos TSE, na ordem pedida, das cidades que a página está vendo.
+
+    `foco` é o parâmetro da URL: códigos IBGE separados por vírgula (a página só conhece o desenho). Lixo, repetição
+    e cidades de outra UF são ignorados, e a lista tem no máximo MAX_FOCO.
+    """
+    tse_de = {codigo_ibge: codigo_tse for codigo_tse, codigo_ibge in ibge.items()}
+    codigos = []
+    for pedido in foco[:2000].split(","):
+        codigo = tse_de.get(pedido.strip())
+        if codigo is not None and codigo not in codigos:
+            codigos.append(codigo)
+    return codigos[:MAX_FOCO]
 
 
 def montar(uf, cidades, ibge, fotos, agora):

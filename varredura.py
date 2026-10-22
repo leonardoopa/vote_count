@@ -7,7 +7,8 @@ arquivos. Para não aumentar o risco com o TSE (100 req/s por IP, bloqueio de 10
   (0 desliga o varredor e os recursos que dependem dele);
 - só trabalha enquanto alguém está olhando: sem pedido por OCIOSO_S segundos, a thread encerra;
 - cada arquivo é revalidado com ETag (resposta 304 não traz corpo) e só o resumo fica em memória;
-- 403 ou 429 pausam tudo por 10 min; 3 respostas 404 seguidas pausam por 60 s.
+- 403 ou 429 pausam tudo por 10 min; 3 respostas 404 seguidas pausam por 60 s;
+- o que a pessoa está olhando (`priorizar`) passa na frente: o mesmo teto vale, só muda a ordem.
 
 Este módulo não conhece nenhum recurso: cada um registra um grupo de trabalhos com a função que
 transforma o arquivo do TSE no resumo que guarda.
@@ -23,10 +24,11 @@ PAUSA_404_S = 60
 LIMITE_404_SEGUIDOS = 3
 ESPERA_FALHA_S = 30      # erro de rede ou 5xx: tenta o mesmo arquivo de novo depois disto
 MAX_GRUPOS = 64
+FOCO_S = 90              # tempo que uma prioridade dura se a página não a renovar
 
 
 class Trabalho:
-    __slots__ = ("chave", "url", "etag", "resumo", "status", "proxima", "verificado")
+    __slots__ = ("chave", "url", "etag", "resumo", "status", "proxima", "verificado", "foco_ate", "foco_pos")
 
     def __init__(self, chave, url):
         self.chave, self.url = chave, url
@@ -35,6 +37,8 @@ class Trabalho:
         self.status = 0         # último código HTTP (0 = nunca buscado ou sem resposta)
         self.proxima = 0.0      # a partir de quando buscar de novo
         self.verificado = 0.0   # último contato bem-sucedido (200 ou 304)
+        self.foco_ate = 0.0     # enquanto o relógio estiver antes disto, o trabalho fura a fila
+        self.foco_pos = 0       # e, entre os que furam a fila, o de menor posição vai primeiro
 
 
 class Grupo:
@@ -79,6 +83,20 @@ class Varredor:
                 self._thread.start()
             return grupo
 
+    def priorizar(self, grupo, chaves):
+        """As `chaves`, em ordem, passam na frente dos outros trabalhos do grupo por FOCO_S segundos (o que a pessoa vê agora).
+
+        Cada chamada troca a lista anterior. Chaves desconhecidas são ignoradas.
+        """
+        with self._trava:
+            ate = self.relogio() + FOCO_S
+            for trabalho in grupo.trabalhos.values():
+                trabalho.foco_ate = 0.0
+            for posicao, chave in enumerate(chaves):
+                trabalho = grupo.trabalhos.get(chave)
+                if trabalho is not None:
+                    trabalho.foco_ate, trabalho.foco_pos = ate, posicao
+
     def resumos(self, grupo):
         """{chave: (resumo, verificado, status)} dos trabalhos do grupo: uma foto, segura para ler de qualquer thread."""
         with self._trava:
@@ -91,10 +109,11 @@ class Varredor:
             if agora < self._pausa_ate:
                 return False
             ativos = [g for g in self._grupos.values() if agora - g.ultimo_pedido < OCIOSO_S]
-            candidatos = [(t.proxima, g, t) for g in ativos for t in g.trabalhos.values() if t.proxima <= agora]
+            candidatos = [((0, t.foco_pos) if t.foco_ate > agora else (1, 0), t.proxima, g, t)
+                          for g in ativos for t in g.trabalhos.values() if t.proxima <= agora]
             if not candidatos:
                 return False
-            _, grupo, trabalho = min(candidatos, key=lambda c: c[0])
+            _, _, grupo, trabalho = min(candidatos, key=lambda c: c[:2])
             etag = trabalho.etag
         resposta = (self.buscar or contador.buscar)(trabalho.url, etag)  # fora da trava: a rede é lenta
         self._registrar(grupo, trabalho, resposta)

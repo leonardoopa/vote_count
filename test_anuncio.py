@@ -2,6 +2,7 @@ import io
 import unittest
 from contextlib import redirect_stderr
 from unittest import mock
+from urllib.parse import quote
 
 import anuncio
 import servidor
@@ -73,6 +74,39 @@ class Ler(unittest.TestCase):
                 self.assertTrue(corpo["ativo"])
                 self.assertNotIn("imagem", corpo)
                 self.assertIn("ANUNCIO_IMAGEM ignorado", aviso)
+
+    def test_whatsapp_vira_link_wa_me_com_mensagem_padrao(self):
+        corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_WHATSAPP="5581999999999")
+        self.assertEqual(corpo["link"], "https://wa.me/5581999999999?text=" + quote(anuncio.MENSAGEM_PADRAO))
+        self.assertTrue(anuncio.link_valido(corpo["link"]))
+        self.assertEqual(aviso, "")
+
+    def test_whatsapp_aceita_pontuacao_e_mensagem_propria(self):
+        corpo, _ = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_WHATSAPP=" +55 (81) 99999-9999 ", ANUNCIO_WHATSAPP_MENSAGEM="Olá, quero anunciar & saber o preço?")
+        self.assertEqual(corpo["link"], "https://wa.me/5581999999999?text=Ol%C3%A1%2C%20quero%20anunciar%20%26%20saber%20o%20pre%C3%A7o%3F")
+
+    def test_mensagem_ruim_volta_a_padrao(self):
+        for mensagem in ("x" * (anuncio.MAX_MENSAGEM + 1), "ruim\x00aqui", ""):
+            with self.subTest(mensagem=mensagem[:10]):
+                corpo, _ = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_WHATSAPP="5581999999999", ANUNCIO_WHATSAPP_MENSAGEM=mensagem)
+                self.assertTrue(corpo["link"].endswith(quote(anuncio.MENSAGEM_PADRAO)))
+
+    def test_whatsapp_ruim_sai_sem_link_e_com_aviso(self):
+        for numero in ("123", "abc", "55819999999x", "5581999999999999", "https://wa.me/5581999999999", "+55 81 9999;9999"):
+            with self.subTest(numero=numero):
+                corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_WHATSAPP=numero)
+                self.assertTrue(corpo["ativo"])
+                self.assertNotIn("link", corpo)
+                self.assertIn("ANUNCIO_WHATSAPP ignorado", aviso)
+
+    def test_link_explicito_vale_mais_que_o_whatsapp(self):
+        corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_LINK="https://exemplo.com.br", ANUNCIO_WHATSAPP="5581999999999")
+        self.assertEqual(corpo["link"], "https://exemplo.com.br")
+        self.assertIn("ANUNCIO_WHATSAPP ignorado", aviso)
+
+    def test_link_ruim_nao_bloqueia_o_whatsapp(self):
+        corpo, _ = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_LINK="javascript:alert(1)", ANUNCIO_WHATSAPP="5581999999999")
+        self.assertTrue(corpo["link"].startswith("https://wa.me/5581999999999"))
 
     def test_rotulo_invalido_volta_ao_padrao(self):
         self.assertEqual(ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ROTULO="x" * 40)[0]["rotulo"], "Publicidade")

@@ -184,6 +184,10 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 .feed-lista .destaque { font-weight: 600; }
 
 /* ===== bloco: mapa, regiões, disputas e anúncio ===== */
+.anuncio { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 16px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 0.875rem; }
+.anuncio[hidden] { display: none; }
+.anuncio-rotulo { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.anuncio a { color: var(--ink); text-underline-offset: 2px; }
 .mapa, .regioes, .disputas { margin-bottom: 12px; }
 .mapa-svg { display: flex; justify-content: center; margin: 4px 0 8px; }
 .mapa-svg svg { display: block; width: 100%; max-width: 520px; height: auto; }
@@ -238,6 +242,7 @@ select:focus-visible, input:focus-visible, button:focus-visible, .linha:focus-vi
 <body>
 <div class="pagina">
   <!-- bloco: anúncio (faixa de publicidade no topo) -->
+  <aside class="anuncio" id="anuncio" aria-label="Publicidade" hidden></aside>
   <header class="cabecalho">
     <div>
       <h1>Contador de votos · Eleições 2026</h1>
@@ -1200,6 +1205,22 @@ aoMudarSelecao.push(() => {
   $("disputas-mais").hidden = true;
   carregarMapa();
 });
+/* Faixa de anúncio: o texto entra como texto puro e o link só vale com http(s). */
+async function carregarAnuncio() {
+  try {
+    const corpo = await (await fetch("/api/anuncio", { cache: "no-store" })).json();
+    const faixa = $("anuncio");
+    faixa.hidden = !corpo.ativo;
+    if (!corpo.ativo) return;
+    const texto = corpo.link && /^https?:\/\//i.test(corpo.link)
+      ? criar("a", { href: corpo.link, target: "_blank", rel: "sponsored noopener noreferrer" }, corpo.texto)
+      : criar("span", {}, corpo.texto);
+    faixa.replaceChildren(criar("span", { class: "anuncio-rotulo" }, corpo.rotulo), texto);
+  } catch { /* sem faixa: o placar não depende dela */ }
+}
+carregarAnuncio();
+setInterval(carregarAnuncio, 10 * 60 * 1000);
+
 $("mapa-brasil").addEventListener("click", () => selecionarUfDoMapa("br"));
 $("disputas-mais").addEventListener("click", () => { disputasTodas = true; if (disputasDados) pintarDisputas(disputasDados); });
 document.addEventListener("visibilitychange", () => {

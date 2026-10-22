@@ -297,6 +297,9 @@ ROTAS_API.update({
 
 # ---- mapa, regiões e anúncio ----
 
+# Faixa de publicidade do topo: configurada por variáveis de ambiente e lida só na partida.
+ANUNCIO = anuncio.do_ambiente()
+
 # Uma resposta pronta por seleção: vários visitantes dividem o mesmo mapa em vez de cada um abrir
 # a sua rodada de consultas (são 29 arquivos por rodada). Poucas chaves: ambiente x cargo x turno.
 TTL_RESPOSTA_MAPA = 5
@@ -361,6 +364,7 @@ def disputas_apertadas(consulta):
 
 
 ROTAS_API.update({
+    "/api/anuncio": lambda consulta: (200, ANUNCIO),
     "/api/mapa": mapa_por_uf,
     "/api/regioes": regioes_do_pais,
     "/api/disputas": disputas_apertadas,

@@ -203,6 +203,10 @@ Para o histórico sobreviver a um reinício, defina `HISTORICO_DIR` (no Docker j
 
 Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar_mapa.py` e embutida na página (o servidor nunca acessa o IBGE). Para refazer: `python3 tools/gerar_mapa.py` e colar a saída no lugar de `MAPA_UFS` em `index.html`.
 
+### Anúncio no topo
+
+`GET /api/anuncio` devolve `{"ativo": false}` ou `{"ativo": true, "texto", "rotulo", "link"}` (o `link` só vem se for válido). A faixa aparece acima do título e some quando não há `ANUNCIO_TEXTO`. Configure no `.env` (veja `.env.example`): `ANUNCIO_TEXTO` (uma linha, até 160 caracteres), `ANUNCIO_LINK` (opcional, só `http://` ou `https://`) e `ANUNCIO_ROTULO` (opcional, padrão "Publicidade", sempre visível). O texto é exibido como texto puro, nunca como HTML, e o link abre em aba nova com `rel="sponsored noopener noreferrer"`. A configuração é lida na partida: mudou, reinicie.
+
 ## Regras de acesso do TSE
 
 O TSE limita o acesso a 100 requisições por segundo por IP e bloqueia o IP por 10 minutos se o limite for passado ou se houver muitos erros 404 seguidos. Por isso:

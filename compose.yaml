@@ -9,6 +9,10 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    environment:
+      ANUNCIO_TEXTO: "${ANUNCIO_TEXTO:-}"
+      ANUNCIO_LINK: "${ANUNCIO_LINK:-}"
+      ANUNCIO_ROTULO: "${ANUNCIO_ROTULO:-}"
     volumes:
       - historico:/dados  # histórico da apuração: sobrevive a `docker compose down` (só `down -v` apaga)
 

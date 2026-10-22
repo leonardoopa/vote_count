@@ -85,6 +85,40 @@ docker compose -f compose.yaml -f compose.vps.yaml up -d --build
 
 4. Depois que `https://votos.seudominio.com.br` abrir, feche a porta pública antiga: tire `BIND` e `PORTA` do `.env` daqui (o padrão volta para `127.0.0.1`) e repita o comando acima.
 
+### Deploy automático (GitHub Actions)
+
+Toda vez que um commit entra na `main` e a CI (workflow **CI**) passa, o workflow **Deploy** (`.github/workflows/deploy.yml`) atualiza a VPS sozinho:
+
+1. Entra na VPS por SSH com uma chave só para isso e roda `deploy/deploy.sh <sha> <pasta>` (o script vem do próprio repositório, por stdin).
+2. Na VPS, o script anota o commit que está no ar, confere que o novo está na `main`, faz `git reset --hard <sha>` e `docker compose -f compose.yaml -f compose.vps.yaml up -d --build`.
+3. Espera o contêiner ficar `healthy` (até 2 min). Se não ficar, **volta ao commit anterior**, sobe de novo e faz o job falhar, para o erro aparecer em vermelho no GitHub. O log mostra o commit de antes e o de agora.
+4. Opcional: se a variável `PRODUCAO_URL` existir, o Actions confere `/saude` pela internet no fim.
+
+Só dispara com CI verde, em `push` na `main` deste repositório (nunca em PR nem em fork), e um deploy por vez. O `.env` da VPS nunca é lido nem aparece no log. Quem consegue mergear na `main` coloca coisa no ar: ative em Settings > Branches a proteção da `main` (exigir PR e a CI verde).
+
+**O que você precisa fazer uma vez** (nada disso fica no repositório):
+
+1. **Chave SSH só para o deploy.** No seu computador: `ssh-keygen -t ed25519 -f ~/.ssh/vote_count_deploy -C "deploy vote_count" -N ""`. Na VPS, acrescente a linha pública em `~/.ssh/authorized_keys` do usuário que roda o Docker, com restrições: `no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 AAAA... deploy vote_count` (o conteúdo de `~/.ssh/vote_count_deploy.pub` vem depois das restrições). Atenção: quem acessa o Docker é equivalente a root na VPS, então guarde a chave privada só no secret do GitHub.
+2. **`known_hosts` do servidor**, para o SSH não aceitar um servidor falso: `ssh-keyscan -t ed25519 IP-DA-VPS` e confira a impressão digital com a que a própria VPS mostra em `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` antes de copiar. Se o SSH não usa a porta 22: `ssh-keyscan -p PORTA -t ed25519 IP-DA-VPS`.
+3. **Environment `production`** em Settings > Environments > New environment (se quiser, marque "Required reviewers" para o deploy esperar o seu aprovar). Nele, em **Environment secrets**:
+
+| Secret | Valor |
+|---|---|
+| `VPS_HOST` | IP ou nome da VPS |
+| `VPS_USER` | usuário do SSH (precisa usar o Docker sem `sudo`) |
+| `VPS_PATH` | pasta do projeto na VPS (hoje `~/contador`; use o caminho completo, ex.: `/home/usuario/contador`) |
+| `VPS_SSH_KEY` | o conteúdo inteiro da chave **privada** `~/.ssh/vote_count_deploy` (com as linhas `BEGIN` e `END`) |
+| `VPS_KNOWN_HOSTS` | a saída do `ssh-keyscan` do passo 2 |
+| `VPS_PORT` | opcional, só se o SSH não usa a 22 |
+
+4. **Variáveis** (Settings > Secrets and variables > Actions > Variables, opcionais): `PRODUCAO_URL` (ex.: `https://votos.seudominio.com.br`, para a conferência de `/saude` pela internet) e `DEPLOY_AUTOMATICO`.
+5. **Na VPS**, a pasta do projeto precisa ser um clone git do repositório com `origin` apontando para ele (o repositório é público, então o endereço `https://github.com/leonardoopa/vote_count.git` basta) e com o `.env` já criado. Alterações feitas à mão em arquivos versionados na VPS somem a cada deploy (o `.env` não: o git o ignora).
+6. **Teste**: Actions > Deploy > Run workflow (deixe o commit vazio para usar a ponta da `main`). O workflow só dispara sozinho depois que `deploy.yml` estiver na `main`.
+
+**Rollback.** Automático se o contêiner não ficar saudável. Para voltar de propósito a um commit antigo da `main`: Actions > Deploy > Run workflow e cole o SHA completo (40 caracteres) dele. Ou, direto na VPS, na pasta do projeto: `bash deploy/deploy.sh <sha> "$PWD"` (`FORCAR=1` refaz mesmo que o commit já esteja no ar).
+
+**Desligar.** Crie a variável `DEPLOY_AUTOMATICO` com o valor `false` (vale também para o disparo manual) e apague-a para religar. Para cortar o acesso de vez, remova a linha da chave do `authorized_keys` da VPS ou apague os secrets.
+
 ### No terminal
 
 ```bash
@@ -346,6 +380,8 @@ web/                            tudo que o navegador recebe, servido como está
   sw.js                         service worker (app instalável)
   geo/                          desenho e nome dos municípios, uma UF por arquivo
 tools/                          geradores dos desenhos do mapa (IBGE)
+deploy/                         deploy.sh: o que roda na VPS no deploy automático
+.github/workflows/              ci.yml (testes) e deploy.yml (deploy na VPS quando a CI passa na main)
 tests/                          testes (unittest), no mesmo caminho do módulo que testam
 Dockerfile                      imagem da página web
 compose.yaml                    sobe a página web com Docker

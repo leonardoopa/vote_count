@@ -21,7 +21,7 @@ O programa **não conta votos**: ele lê os arquivos JSON de resultado que o TSE
 - Um servidor consulta o TSE e reparte a resposta com todos os visitantes. Mais gente na página não aumenta o acesso ao TSE.
 - Respeita as regras de acesso do TSE (veja [abaixo](#regras-de-acesso-do-tse)).
 - Evolução da apuração com replay, feed de atualizações, resumo da diferença, indicador "ao vivo" e tela cheia para TV.
-- Mapa do Brasil colorido pelo líder de cada UF, painel por região, disputas mais apertadas, mapa por município.
+- Mapa do Brasil colorido pelo líder de cada UF, painel por região, disputas mais apertadas, mapa por município e mapa-múndi com o voto no exterior por país.
 - Hemiciclo da Câmara (por partido e federação) e do Senado, e os mais votados de deputado federal e estadual.
 - Busca rápida (`/` ou `⌘K`), comparação lado a lado, exportação em CSV e JSON, link com prévia e imagem, app instalável e alertas.
 - Só biblioteca padrão do Python. Nada para instalar.
@@ -228,6 +228,8 @@ O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {c
 Brasileiros votam no exterior para presidente. O TSE publica isso como a UF `zz` e, dentro dela, **uma "cidade" por embaixada ou consulado** (186 em 2026, de Abidjã a Zurique), sem dizer o país. `exterior.py` liga cada cidade a um país (tabela `PAISES`, código ISO 3166-1 alfa-2; uma cidade nova que não esteja na tabela fica fora do mapa e entra em `sem_pais`) e soma as cidades de cada país.
 
 `GET /api/mundo` (`turno`, `ambiente` e, opcional, `pais`) devolve `{"total", "carregadas", "sem_pais", "idade_s", "locais": {"PT": 3}, "paises": {"PT": {...}}, "brasil": {...}}`. Cada país tem `locais`, `carregados`, `votos`, `apurado`, `final`, `situacao` (`lider`, `empate`, `zerado` ou `sem_dados`) e, com líder, `lider`, `segundo`, `margem` e `margem_votos`. Só entram os países com cidade já buscada; `locais` lista todos os que têm urna. O percentual é sobre os votos nos candidatos. O Brasil vem da soma das 27 UFs do resumo por UF, sem o exterior. Com `pais=PT`, a resposta traz `detalhe`: `candidatos` (votos e percentual) e `cidades` com o líder de cada uma. As cidades são buscadas pelo varredor, nas mesmas regras do mapa por município (teto de `BUSCAS_EXTRAS_POR_SEGUNDO`, só enquanto alguém olha, só se o arquivo do exterior existe). O desenho dos países vem em `GET /geo/mundo.json` (`{"w", "h", "m": {ISO: caminho SVG}, "n": {ISO: nome em português}}`, uns 80 KB), gerado por `python3 tools/gerar_mapa.py --mundo web/geo` a partir do Natural Earth (domínio público; projeção de Miller, sem a Antártida).
+
+Na página (só presidente), o card **Mapa-múndi** mostra os países coloridos pelo líder, com o mesmo zoom do mapa por município; país pequeno com votos (Singapura, Barein…) ganha um ponto para dar para clicar. Clicar num país abre o resultado dele e a lista das cidades; clicar no Brasil leva ao mapa dos estados. Só começa quando alguém pede ("Carregar o mapa-múndi"). Acima do mapa, a **trilha** (Mundo › Brasil › Estado › Cidade, ou Mundo › País) diz onde a pessoa está e leva de volta a cada nível.
 
 ### Busca rápida
 

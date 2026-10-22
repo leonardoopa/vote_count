@@ -235,6 +235,19 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color
 .mapa-mun .mapa-svg path.atual { stroke-width: 2px; }
 .mapa-mun .mapa-svg path.sem-dados { cursor: default; }
 .mapa-mun .mapa-svg .mun-rotulos text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-weight: 600; fill: var(--ink); stroke: var(--surface); stroke-width: 0.25em; stroke-linejoin: round; paint-order: stroke; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.mapa-mun .mapa-svg circle.ponto { stroke: var(--ink); stroke-width: 1px; vector-effect: non-scaling-stroke; cursor: pointer; }
+.mapa-mun .mapa-svg circle.ponto.atual { stroke-width: 2px; }
+.mundo .mapa-svg { background: var(--wash); border-radius: 8px; overflow: hidden; }
+.mundo-pais { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.mundo-pais h3 { margin: 0; font-size: 1rem; }
+.mundo-pais .evo-rolagem { margin-top: 8px; }
+.mundo .evo-rolagem td:first-child { white-space: normal; }
+.mundo .botao-link[aria-current="true"] { font-weight: 600; }
+.trilha { margin-bottom: 12px; font-size: 0.875rem; }
+.trilha[hidden] { display: none; }
+.trilha ol { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0; padding: 0; list-style: none; }
+.trilha li + li::before { content: "›"; margin-right: 8px; color: var(--muted); }
+.trilha [aria-current="page"] { font-weight: 600; }
 .zoom-botoes { position: absolute; top: 8px; right: 8px; z-index: 1; display: flex; gap: 6px; }
 .zoom-botoes .botao { min-width: 36px; min-height: 36px; padding: 4px 10px; font-size: 1.125rem; line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
 .zoom-botoes .botao[hidden] { display: none; }

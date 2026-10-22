@@ -21,6 +21,7 @@
 <script defer src="/js/evolucao.js"></script>
 <script defer src="/js/contornos-ufs.js"></script>
 <script defer src="/js/mapa-brasil.js"></script>
+<script defer src="/js/mundo.js"></script>
 <script defer src="/js/anuncio.js"></script>
 <script defer src="/js/iniciar.js"></script>
 </head>
@@ -78,6 +79,33 @@
     </section>
 
     <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
+
+    <!-- bloco: mapa-múndi (exterior por país) -->
+    <nav class="trilha" id="trilha" aria-label="Onde você está no mapa" hidden></nav>
+    <section class="cartao mapa-mun mundo" id="mundo" aria-labelledby="mundo-h" hidden>
+      <div class="lista-titulo"><h2 id="mundo-h">Mapa-múndi</h2><span id="mundo-info"></span></div>
+      <p class="evo-nota" id="mundo-nota" role="status">Brasileiros votam no exterior para presidente. O TSE publica o resultado por embaixada e consulado, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
+      <button class="botao" id="mundo-abrir" type="button">Carregar o mapa-múndi</button>
+      <button class="botao" id="mundo-tentar" type="button" hidden>Tentar de novo</button>
+      <div id="mundo-corpo" hidden>
+        <ul class="evo-legenda" id="mundo-legenda"></ul>
+        <p class="evo-eixos" id="mundo-ajuda">Passe o mouse (ou toque) num país para ver o nome e o resultado. Clique nele para ver as cidades; o Brasil leva ao mapa dos estados. Amplie com os botões + e −, com a pinça ou com Ctrl (⌘ no Mac) + rolagem.</p>
+        <div class="mapa-svg" id="mundo-svg"></div>
+        <div class="mundo-pais" id="mundo-pais" aria-live="polite" hidden>
+          <div class="lista-titulo"><h3 id="mundo-pais-nome"></h3><button class="botao" id="mundo-pais-fechar" type="button">Fechar</button></div>
+          <p class="evo-eixos" id="mundo-pais-resumo"></p>
+          <div class="evo-tabela"><div class="evo-rolagem" tabindex="0" role="region" aria-label="Candidatos no país escolhido"><table id="mundo-pais-candidatos"></table></div></div>
+          <details class="evo-tabela" open>
+            <summary>Cidades (embaixadas e consulados)</summary>
+            <div class="evo-rolagem" tabindex="0" role="region" aria-label="Cidades do país escolhido"><table id="mundo-pais-cidades"></table></div>
+          </details>
+        </div>
+        <details class="evo-tabela">
+          <summary>Ver os países em lista</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Países com o líder de cada um"><table id="mundo-tabela"></table></div>
+        </details>
+      </div>
+    </section>
 
     <!-- bloco: mapa do Brasil e painel por região -->
     <section class="cartao mapa" id="mapa" aria-labelledby="mapa-h" hidden>

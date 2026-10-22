@@ -221,6 +221,7 @@ Esses dois precisam de um arquivo de deputados por UF (27 por cargo). Quem busca
 
 O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {código IBGE: caminho SVG}}`, uns 615 KB para as 27 UFs, na pasta `web/geo/`). A página liga desenho e dados pelo código IBGE (`cdi`) que o TSE já traz no arquivo de cidades. Se o desenho não baixar, a página avisa e tenta de novo. Para refazer os arquivos: `python3 tools/gerar_mapa.py --municipios web/geo`.
 
+**Zoom e nomes.** Passar o mouse (ou tocar) numa cidade mostra o nome e o placar, ou "ainda não carregado". Amplia-se até 40 vezes com os botões **+** e **−**, a pinça, **Ctrl** (**⌘** no Mac) + rolagem ou as teclas `+` `−` `0` com o mapa em foco; arrastar (ou as setas) move, e "Ver tudo" volta. A rolagem comum continua rolando a página. Com zoom, as cidades cuja forma já é larga o bastante ganham o nome escrito no mapa. O traço dos contornos é em pixels da tela, então fica fino em qualquer ampliação.
 
 ### Busca rápida
 

@@ -1,8 +1,13 @@
 /* Mapa por município. O desenho (geo/<uf>.json, do IBGE) e os dados (uma busca ao TSE por cidade, feita aos poucos
-   pelo servidor) só são pedidos quando a pessoa clica; depois o mapa enche conforme as cidades chegam. */
+   pelo servidor) só são pedidos quando a pessoa clica; depois o mapa enche conforme as cidades chegam.
+   O mapa dá zoom (zoom-mapa.js); a área que está na tela é avisada ao servidor, que busca essas cidades primeiro. */
 const INTERVALO_MAPA_MUN = 15000;
-const munGeo = {};                                   // desenhos já baixados, por UF
-const mun = { aberto: false, seq: 0, timer: 0, marca: "", dados: null };
+const ZOOM_MAXIMO_MUN = 40;
+const FOCO_MAXIMO_MUN = 60;     // cidades da área visível que o servidor busca primeiro
+const ROTULO_MIN_PX = 44;       // a cidade só ganha nome no mapa quando o desenho dela é largo assim na tela
+const ROTULOS_MAXIMO_MUN = 150;
+const munGeo = {};              // desenhos já baixados, por UF: {w, h, m: {ibge: caminho}, n: {ibge: nome}}
+const mun = { aberto: false, seq: 0, timer: 0, marca: "", dados: null, mapa: null, foco: "" };
 const temMapaMun = () => (estado.cargo === "presidente" || estado.cargo === "governador") && estado.uf !== "br";
 const marcaMun = () => [estado.cargo, estado.uf, estado.turno, estado.ambiente].join("|");
 
@@ -12,27 +17,64 @@ function resumoDaCidade(r) {
   return `${nomeDoCandidato(r.lider)} lidera com ${pct(r.lider.percentual)}${r.lider.eleito ? " · eleito" : ""}, ${pp(r.margem)} à frente (${inteiro(r.margem_votos)} votos) · ${pct(r.apurado)} das seções`;
 }
 
-function desenharMapaMun() {
-  const geo = munGeo[estado.uf];
-  if (!geo || !mun.dados) return;
-  const d = mun.dados, porCodigo = d.cidades;
-  const svg = criarSvg("svg", { viewBox: `0 0 ${geo.w} ${geo.h}`, role: "img", "aria-label": `Mapa dos municípios de ${UFS[estado.uf]} com o líder de cada cidade já carregada.` });
-  const grupo = criarSvg("g");
+/* O nome vem do desenho (todas as cidades, desde o primeiro instante); o placar vem do servidor (só as já buscadas). */
+function dicaDaCidade(ibge) {
+  const r = mun.dados && mun.dados.cidades[ibge];
+  const nome = (munGeo[estado.uf].n || {})[ibge] || (r && r.nome) || "Município";
+  return [criar("strong", {}, nome), criar("span", {}, r ? resumoDaCidade(r) : "Placar ainda não carregado: o servidor busca as cidades aos poucos.")];
+}
+
+function construirMapaMun() {
+  const uf = estado.uf, geo = munGeo[uf], caixa = $("mapa-mun-svg");
+  if (mun.mapa) mun.mapa.zoom.destruir();
+  const svg = criarSvg("svg", { viewBox: `0 0 ${geo.w} ${geo.h}`, role: "img", tabindex: "0",
+    "aria-label": `Mapa dos municípios de ${UFS[uf]} com o líder de cada cidade já carregada. Use + e − para ampliar, as setas para mover e 0 para ver o estado todo.` });
+  const grupo = criarSvg("g"), rotulos = criarSvg("g", { class: "mun-rotulos", "aria-hidden": "true" });
+  const caminhos = new Map();
   for (const [ibge, forma] of Object.entries(geo.m)) {
-    const r = porCodigo[ibge];
-    const caminho = criarSvg("path", { d: forma, style: pintura(r && r.situacao === "lider" ? r : null), "data-codigo": r ? r.codigo : "" });
-    if (r) {
-      if (r.codigo === estado.municipio) caminho.classList.add("atual");
-      caminho.addEventListener("pointermove", (e) => mostrarDicaEm([criar("strong", {}, r.nome), criar("span", {}, resumoDaCidade(r))], e.clientX, e.clientY));
-      caminho.addEventListener("pointerleave", () => { dica.hidden = true; });
-      caminho.addEventListener("click", () => { dica.hidden = true; irParaCidade({ uf: estado.uf, codigo: r.codigo }); });
-    } else {
-      caminho.style.cursor = "default";
-    }
+    const caminho = criarSvg("path", { d: forma, "data-ibge": ibge });
+    caminhos.set(ibge, caminho);
     grupo.append(caminho);
   }
-  svg.append(grupo);
-  $("mapa-mun-svg").replaceChildren(svg);
+  svg.append(grupo, rotulos);
+  caixa.replaceChildren(svg);
+  const caixas = new Map();               // retângulo de cada cidade no desenho, para saber o que está na tela
+  for (const [ibge, caminho] of caminhos) caixas.set(ibge, caminho.getBBox());
+  const zoom = ativarZoom(caixa, svg, geo.w, geo.h, { maximo: ZOOM_MAXIMO_MUN, aoParar: aoParouOZoomMun });
+  mun.mapa = { uf, svg, grupo, rotulos, caminhos, caixas, zoom, textos: new Map() };
+  mun.foco = "";
+
+  svg.addEventListener("pointermove", (e) => {
+    const alvo = e.buttons ? null : e.target.closest("path[data-ibge]");   // arrastando o mapa, sem dica
+    if (alvo) mostrarDicaEm(dicaDaCidade(alvo.dataset.ibge), e.clientX, e.clientY);
+    else dica.hidden = true;
+  });
+  svg.addEventListener("pointerleave", () => { dica.hidden = true; });
+  svg.addEventListener("click", (e) => {
+    const alvo = e.target.closest("path[data-ibge]");
+    const r = alvo && mun.dados && mun.dados.cidades[alvo.dataset.ibge];
+    if (r) { dica.hidden = true; irParaCidade({ uf: estado.uf, codigo: r.codigo }); }
+  });
+}
+
+function marcarCidadeAtual() {
+  if (!mun.mapa || !mun.dados) return;
+  for (const [ibge, caminho] of mun.mapa.caminhos) {
+    const r = mun.dados.cidades[ibge];
+    const atual = Boolean(r) && estado.municipio !== "" && r.codigo === estado.municipio;
+    if (atual && !caminho.classList.contains("atual")) mun.mapa.grupo.append(caminho);   // por último: o contorno não fica sob os vizinhos
+    caminho.classList.toggle("atual", atual);
+  }
+}
+
+function pintarMapaMun() {
+  const d = mun.dados, porCodigo = d.cidades;
+  for (const [ibge, caminho] of mun.mapa.caminhos) {
+    const r = porCodigo[ibge];
+    caminho.setAttribute("style", pintura(r && r.situacao === "lider" ? r : null));
+    caminho.classList.toggle("sem-dados", !r);
+  }
+  marcarCidadeAtual();
   const contagem = new Map();
   for (const r of Object.values(porCodigo)) if (r.situacao === "lider") contagem.set(r.lider.partido, (contagem.get(r.lider.partido) || 0) + 1);
   $("mapa-mun-legenda").replaceChildren(...[...contagem].sort((a, b) => b[1] - a[1]).map(([partido, n]) => criar("li", {},
@@ -41,6 +83,56 @@ function desenharMapaMun() {
   $("mapa-mun-info").textContent = `${inteiro(d.carregadas)} de ${inteiro(d.total)} cidades`;
   $("mapa-mun-nota").hidden = d.carregadas >= d.total;
   $("mapa-mun-nota").textContent = d.carregadas >= d.total ? "" : "O servidor busca as cidades no TSE aos poucos; o mapa enche sozinho. Clique numa cidade para ver o placar dela.";
+  atualizarRotulosMun();
+}
+
+/* Nomes escritos no mapa: só das cidades cuja forma já é larga o bastante na tela (então só com zoom) e que cabem na janela. */
+function atualizarRotulosMun() {
+  const mapa = mun.mapa;
+  if (!mapa) return;
+  const { x, y, k } = mapa.zoom.vista, geo = munGeo[mapa.uf], nomes = geo.n || {};
+  const largura = geo.w / k, altura = geo.h / k, porPixel = mapa.zoom.unidadesPorPixel();
+  const querem = [];
+  if (k >= 2) {
+    for (const [ibge, c] of mapa.caixas) {
+      const nome = nomes[ibge], px = c.width / porPixel;
+      if (!nome || px < ROTULO_MIN_PX || px < nome.length * 6.4 + 8) continue;    // o nome não cabe dentro da cidade
+      if (c.x + c.width < x || c.x > x + largura || c.y + c.height < y || c.y > y + altura) continue;
+      querem.push([ibge, c, nome]);
+    }
+  }
+  const mostrar = new Set(querem.sort((a, b) => b[1].width - a[1].width).slice(0, ROTULOS_MAXIMO_MUN).map(([ibge]) => ibge));
+  for (const [ibge, texto] of mapa.textos) if (!mostrar.has(ibge)) { texto.remove(); mapa.textos.delete(ibge); }
+  for (const [ibge, c, nome] of querem) {
+    if (!mostrar.has(ibge)) continue;
+    let texto = mapa.textos.get(ibge);
+    if (!texto) {
+      texto = criarSvg("text", { x: c.x + c.width / 2, y: c.y + c.height / 2 }, nome);
+      mapa.textos.set(ibge, texto);
+      mapa.rotulos.append(texto);
+    }
+    texto.style.fontSize = `${12 * porPixel}px`;     // 12 px na tela, qualquer que seja o zoom
+  }
+}
+
+/* As cidades da área visível, as mais perto do centro primeiro: o servidor busca essas antes das outras. */
+function focoDoMapaMun() {
+  const mapa = mun.mapa, { x, y, k } = mapa.zoom.vista, geo = munGeo[mapa.uf];
+  if (k < 2) return "";
+  const largura = geo.w / k, altura = geo.h / k, cx = x + largura / 2, cy = y + altura / 2, vistas = [];
+  for (const [ibge, c] of mapa.caixas) {
+    if (c.x > x + largura || c.x + c.width < x || c.y > y + altura || c.y + c.height < y) continue;
+    vistas.push([Math.hypot(c.x + c.width / 2 - cx, c.y + c.height / 2 - cy), ibge]);
+  }
+  return vistas.sort((a, b) => a[0] - b[0]).slice(0, FOCO_MAXIMO_MUN).map(([, ibge]) => ibge).join(",");
+}
+
+function aoParouOZoomMun() {
+  atualizarRotulosMun();
+  const foco = focoDoMapaMun();
+  if (foco === mun.foco) return;
+  mun.foco = foco;
+  if (mun.dados && mun.dados.carregadas < mun.dados.total) carregarMapaMun();   // não espera o próximo ciclo
 }
 
 async function carregarMapaMun() {
@@ -64,12 +156,15 @@ async function carregarMapaMun() {
     mun.timer = setTimeout(carregarMapaMun, 15000);
     return;
   }
-  const resposta = await tentar("/api/mapa-municipal", new URLSearchParams({ cargo: estado.cargo, uf, turno: estado.turno, ambiente: estado.ambiente }));
+  const consulta = new URLSearchParams({ cargo: estado.cargo, uf, turno: estado.turno, ambiente: estado.ambiente });
+  if (mun.foco && mun.mapa && mun.mapa.uf === uf) consulta.set("foco", mun.foco);
+  const resposta = await tentar("/api/mapa-municipal", consulta);
   if (minha !== mun.seq) return;
   $("mapa-mun-corpo").hidden = false;
   if (resposta.ok) {
     mun.dados = resposta.corpo;
-    desenharMapaMun();
+    if (!mun.mapa || mun.mapa.uf !== uf) construirMapaMun();   // o corpo precisa estar visível: getBBox mede o desenho na tela
+    pintarMapaMun();
   } else {
     $("mapa-mun-nota").hidden = false;
     $("mapa-mun-nota").textContent = resposta.corpo.erro || "Mapa por município indisponível agora.";
@@ -80,10 +175,7 @@ async function carregarMapaMun() {
 aoMudarSelecao.push(() => {
   $("mapa-mun").hidden = !temMapaMun();
   if (!temMapaMun()) { clearTimeout(mun.timer); mun.seq++; mun.marca = ""; return; }
-  if (marcaMun() === mun.marca) {   // só mudou a cidade: o mapa é o mesmo, muda o contorno marcado
-    for (const caminho of $("mapa-mun-svg").querySelectorAll("path")) caminho.classList.toggle("atual", caminho.dataset.codigo !== "" && caminho.dataset.codigo === estado.municipio);
-    return;
-  }
+  if (marcaMun() === mun.marca) { marcarCidadeAtual(); return; }   // só mudou a cidade: o mapa é o mesmo, muda o contorno marcado
   mun.marca = marcaMun();
   mun.dados = null;
   $("mapa-mun-corpo").hidden = true;

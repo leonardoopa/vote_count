@@ -225,9 +225,21 @@ kbd { padding: 0 5px; border: 1px solid var(--border); border-radius: 4px; color
 .anuncio a { color: var(--ink); text-underline-offset: 2px; }
 .mapa, .regioes, .disputas, .hemiciclo, #maisvotados, .mapa-mun { margin-bottom: 12px; }
 .mapa-mun .botao[hidden] { display: none; }
-.mapa-mun .mapa-svg svg { max-width: 760px; }
-.mapa-mun .mapa-svg path { stroke-width: 0.6px; }
+/* Mapa por município: dá zoom (zoom-mapa.js). O traço é em pixels da tela, então fica fino em qualquer ampliação. */
+.mapa-mun .mapa-svg { position: relative; }
+.mapa-mun .mapa-svg svg { max-width: none; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.mapa-mun .mapa-svg.ampliado svg { touch-action: none; }
+.mapa-mun .mapa-svg.arrastando svg, .mapa-mun .mapa-svg.arrastando path { cursor: grabbing; }
+.mapa-mun .mapa-svg svg:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; border-radius: 4px; }
+.mapa-mun .mapa-svg path { stroke-width: 0.5px; vector-effect: non-scaling-stroke; }
 .mapa-mun .mapa-svg path.atual { stroke-width: 2px; }
+.mapa-mun .mapa-svg path.sem-dados { cursor: default; }
+.mapa-mun .mapa-svg .mun-rotulos text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-weight: 600; fill: var(--ink); stroke: var(--surface); stroke-width: 0.25em; stroke-linejoin: round; paint-order: stroke; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.zoom-botoes { position: absolute; top: 8px; right: 8px; z-index: 1; display: flex; gap: 6px; }
+.zoom-botoes .botao { min-width: 36px; min-height: 36px; padding: 4px 10px; font-size: 1.125rem; line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18); }
+.zoom-botoes .botao[hidden] { display: none; }
+.mapa-dica { position: absolute; left: 50%; bottom: 12px; z-index: 1; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 6px 12px; border-radius: 8px; background: var(--ink); color: var(--surface); font-size: 0.8125rem; text-align: center; pointer-events: none; }
+.mapa-dica[hidden] { display: none; }
 .hemiciclo-svg svg { display: block; width: 100%; max-width: 720px; height: auto; margin: 0 auto; }
 .hemiciclo-svg circle { stroke-width: 0.012px; }
 .hemiciclo-svg text { fill: var(--ink); text-anchor: middle; }

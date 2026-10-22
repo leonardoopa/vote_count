@@ -263,6 +263,49 @@ ROTAS_API = {
 
 # ---- mapa, regiões e anúncio ----
 
+# Uma resposta pronta por seleção: vários visitantes dividem o mesmo mapa em vez de cada um abrir
+# a sua rodada de consultas (são 28 arquivos por rodada). Poucas chaves: ambiente x cargo x turno.
+TTL_RESPOSTA_MAPA = 5
+_PRONTAS, _TRAVAS_PRONTAS, _TRAVA_GERAL = {}, {}, threading.Lock()
+
+
+def lembrar(chave, construir, ttl=TTL_RESPOSTA_MAPA):
+    """(status, corpo) de `construir()`, refeito no máximo a cada `ttl` segundos por chave."""
+    with _TRAVA_GERAL:
+        trava = _TRAVAS_PRONTAS.setdefault(chave, threading.Lock())
+    with trava:  # quem chega com a resposta vencida refaz; os outros esperam e reaproveitam
+        pronta = _PRONTAS.get(chave)
+        if pronta is None or time.time() >= pronta[0]:
+            status, corpo = construir()
+            pronta = _PRONTAS[chave] = (time.time() + ttl, status, corpo)
+        return pronta[1], pronta[2]
+
+
+def validar_mapa(consulta):
+    """(cargo, ambiente, turno) do mapa: a validação é a de `validar`, que pede uma UF; o mapa usa todas."""
+    cargo = consulta.get("cargo", ["presidente"])[0]
+    if cargo not in ("presidente", "governador"):
+        raise ValueError("o mapa só existe para presidente e governador")
+    _, _, ambiente, turno, _ = validar({**consulta, "uf": ["br" if cargo == "presidente" else "sp"]})
+    return cargo, ambiente, turno
+
+
+def mapa_por_uf(consulta):
+    """Devolve (status HTTP, corpo JSON) com o líder de cada UF, para o mapa do Brasil."""
+    try:
+        cargo, ambiente, turno = validar_mapa(consulta)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+
+    def construir():
+        corpo, falha = mapa.resumo_por_uf(CACHE.obter, ambiente, cargo, turno)
+        return erro_do_tse(*falha) if falha else (200, corpo)
+
+    return lembrar(("mapa", ambiente, cargo, turno), construir)
+
+
+ROTAS_API["/api/mapa"] = mapa_por_uf
+
 
 class Handler(BaseHTTPRequestHandler):
     def _enviar(self, status, tipo, corpo):

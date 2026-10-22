@@ -16,10 +16,11 @@ transforma o arquivo do TSE no resumo que guarda.
 import threading
 import time
 
-import contador
+from contador.tse import cliente
+
 
 OCIOSO_S = 300           # sem pedido por este tempo, a thread encerra
-PAUSA_BLOQUEIO_S = contador.ESPERA_BLOQUEIO
+PAUSA_BLOQUEIO_S = cliente.ESPERA_BLOQUEIO
 PAUSA_404_S = 60
 LIMITE_404_SEGUIDOS = 3
 ESPERA_FALHA_S = 30      # erro de rede ou 5xx: tenta o mesmo arquivo de novo depois disto
@@ -52,7 +53,7 @@ class Grupo:
 class Varredor:
     def __init__(self, por_segundo, buscar=None, relogio=time.time, dormir=time.sleep):
         self.por_segundo = por_segundo
-        self.buscar = buscar  # None: usa `contador.buscar` na hora de cada busca (a demonstração troca essa função)
+        self.buscar = buscar  # None: usa `cliente.buscar` na hora de cada busca (a demonstração troca essa função)
         self.relogio, self.dormir = relogio, dormir
         self._grupos = {}
         self._trava = threading.RLock()
@@ -115,7 +116,7 @@ class Varredor:
                 return False
             _, _, grupo, trabalho = min(candidatos, key=lambda c: c[:2])
             etag = trabalho.etag
-        resposta = (self.buscar or contador.buscar)(trabalho.url, etag)  # fora da trava: a rede é lenta
+        resposta = (self.buscar or cliente.buscar)(trabalho.url, etag)  # fora da trava: a rede é lenta
         self._registrar(grupo, trabalho, resposta)
         return True
 

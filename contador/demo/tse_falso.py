@@ -1,10 +1,6 @@
-#!/usr/bin/env python3
-"""Demonstração com um TSE falso: a apuração avança sozinha e nada sai da máquina.
+"""Um TSE falso: a apuração avança sozinha e nada sai da máquina (uso: `python3 -m contador.demo`).
 
-    python3 tse_falso.py                  # http://127.0.0.1:8000/?ambiente=simulado
-    python3 tse_falso.py --duracao 600 --passo 15 --porta 8010
-
-Troca `contador.buscar` por dados sintéticos no formato do TSE e sobe o servidor de sempre.
+Troca `cliente.buscar` por dados sintéticos no formato do TSE e sobe o servidor de sempre.
 Só o ambiente "simulado" responde; o "oficial" dá 404, para ninguém confundir demonstração
 com dado real. Candidatos e números são inventados (os partidos são reais, para testar as
 cores). Cobre presidente, governador e senador nos dois turnos e os deputados (federal, estadual e
@@ -12,27 +8,25 @@ distrital) no 1º; os deputados trazem federações e eleitos a partir de metade
 A apuração começa zerada, ganha uma totalização nova a cada `--passo` segundos e termina
 em `--duracao` segundos.
 """
-import argparse
 import functools
 import json
 import math
 import random
 import re
-import sys
 import time
 import zlib
-from pathlib import Path
 
-import contador
-import servidor
+from contador import caminhos
+from contador.tse import catalogo, cliente
 
-BASE = contador.AMBIENTES["simulado"]["base"]
+
+BASE = catalogo.AMBIENTES["simulado"]["base"]
 ELEICOES = {  # código da eleição -> (tipo, turno)
     codigo: (tipo, turno)
-    for tipo, codigos in contador.AMBIENTES["simulado"]["eleicoes"].items()
+    for tipo, codigos in catalogo.AMBIENTES["simulado"]["eleicoes"].items()
     for turno, codigo in enumerate(codigos, start=1)
 }
-CARGOS = {codigo: nome for nome, (codigo, _) in contador.CARGOS.items()}
+CARGOS = {codigo: nome for nome, (codigo, _) in catalogo.CARGOS.items()}
 ARQUIVO = re.compile(rf"^{re.escape(BASE)}/(\d+)/dados/([a-z]{{2}})/[a-z]{{2}}(\d{{5}})?-c(\d{{4}})-e\d{{6}}-u\.json$")
 CONFIG = re.compile(rf"^{re.escape(BASE)}/(\d+)/config/mun-e\d{{6}}-cm\.json$")
 
@@ -53,24 +47,24 @@ def semente(*partes):
     return zlib.crc32(":".join(map(str, partes)).encode())
 
 
-SECOES = {uf: 3000 + semente("secoes", uf) % 40000 for uf in contador.UFS}
+SECOES = {uf: 3000 + semente("secoes", uf) % 40000 for uf in catalogo.UFS}
 SECOES["zz"] = 1500 + semente("secoes", "zz") % 2500  # exterior: só presidente
 
 
 def codigo_cidade(uf, indice):
-    return f"{10000 + 1000 * contador.UFS.index(uf) + indice}"
+    return f"{10000 + 1000 * catalogo.UFS.index(uf) + indice}"
 
 
 @functools.lru_cache(maxsize=None)
 def cidades_da_uf(uf):
     """[(código TSE, código IBGE, nome)]: uma cidade por município do desenho da UF (geo/<uf>.json), para o mapa
     por município funcionar na demonstração; sem o arquivo, as 5 cidades inventadas."""
-    arquivo = Path(__file__).with_name("web") / "geo" / f"{uf}.json"
+    arquivo = caminhos.WEB / "geo" / f"{uf}.json"
     if arquivo.is_file():
         ibge = sorted(json.loads(arquivo.read_text(encoding="utf-8"))["m"])
         nomes = [f"{CIDADES[i % len(CIDADES)]} {i // len(CIDADES) + 1}" for i in range(len(ibge))]
     else:
-        ibge, nomes = [str(9000000 + 100 * contador.UFS.index(uf) + i) for i in range(len(CIDADES))], CIDADES
+        ibge, nomes = [str(9000000 + 100 * catalogo.UFS.index(uf) + i) for i in range(len(CIDADES))], CIDADES
     return tuple((codigo_cidade(uf, i), codigo, nome) for i, (codigo, nome) in enumerate(zip(ibge, nomes)))
 
 
@@ -78,7 +72,7 @@ def lista_de_cidades():
     return {"abr": [
         {"cd": uf, "mu": [{"cd": tse, "cdi": ibge, "nm": nome.upper(), "c": "s" if i == 0 else "n"}
                           for i, (tse, ibge, nome) in enumerate(cidades_da_uf(uf))]}
-        for uf in contador.UFS
+        for uf in catalogo.UFS
     ]}
 
 
@@ -162,7 +156,7 @@ def totais(secoes, p):
 def numeros_do_brasil(turno, p):
     """Presidente no Brasil: a soma das 27 UFs e do exterior, para o mapa e o placar nacional baterem."""
     soma = None
-    for uf in (*contador.UFS, "zz"):
+    for uf in (*catalogo.UFS, "zz"):
         parte = numeros("presidente", uf, turno, "", p)
         if soma is None:
             soma = {**parte, "votos": dict(parte["votos"])}
@@ -256,7 +250,7 @@ def distribuir(total, pesos, minimo):
     return partes
 
 
-VAGAS_FEDERAL = distribuir(513, {uf: SECOES[uf] for uf in contador.UFS}, 8)
+VAGAS_FEDERAL = distribuir(513, {uf: SECOES[uf] for uf in catalogo.UFS}, 8)
 
 
 def vagas_de(cargo, uf):
@@ -325,7 +319,7 @@ def montar_deputados(cargo, uf, p):
         })
     return {
         **cabecalho(n, p),
-        "carg": [{"cd": str(contador.CARGOS[cargo][0]), "nv": str(vagas),
+        "carg": [{"cd": str(catalogo.CARGOS[cargo][0]), "nv": str(vagas),
                   "fed": [{"n": numero, "sg": sigla, "com": sigla, "npar": []} for numero, (sigla, _) in FEDERACOES.items()],
                   "agr": agr}],
     }
@@ -339,54 +333,35 @@ def progresso():
 
 
 def buscar_falso(url, etag=None):
-    """No lugar de `contador.buscar`: mesma assinatura e mesmos códigos (200, 304, 404)."""
+    """No lugar de `cliente.buscar`: mesma assinatura e mesmos códigos (200, 304, 404)."""
     if CONFIG.match(url):
-        return contador.Resposta(304, None, '"cidades"') if etag == '"cidades"' else contador.Resposta(200, lista_de_cidades(), '"cidades"')
+        return cliente.Resposta(304, None, '"cidades"') if etag == '"cidades"' else cliente.Resposta(200, lista_de_cidades(), '"cidades"')
     achado = ARQUIVO.match(url)
     if not achado:
-        return contador.Resposta(404, None, etag)
+        return cliente.Resposta(404, None, etag)
     eleicao, uf, municipio, codigo_cargo = int(achado[1]), achado[2], achado[3] or "", int(achado[4])
     cargo = CARGOS.get(codigo_cargo)
     tipo, turno = ELEICOES.get(eleicao, (None, None))
     if cargo in CARGOS_DEPUTADOS:
-        valido = turno == 1 and not municipio and contador.uf_valida(cargo, uf) and uf != "br"
+        valido = turno == 1 and not municipio and catalogo.uf_valida(cargo, uf) and uf != "br"
         if not valido:
-            return contador.Resposta(404, None, etag)
+            return cliente.Resposta(404, None, etag)
         passo, p = progresso()
         marca = f'"{passo}"'
         if etag == marca:
-            return contador.Resposta(304, None, marca)
-        return contador.Resposta(200, montar_deputados(cargo, uf, p), marca)
-    if cargo not in ("presidente", "governador", "senador") or contador.CARGOS[cargo][1] != tipo:
-        return contador.Resposta(404, None, etag)
+            return cliente.Resposta(304, None, marca)
+        return cliente.Resposta(200, montar_deputados(cargo, uf, p), marca)
+    if cargo not in ("presidente", "governador", "senador") or catalogo.CARGOS[cargo][1] != tipo:
+        return cliente.Resposta(404, None, etag)
     if uf in ("br", "zz") and not (cargo == "presidente" and not municipio):
-        return contador.Resposta(404, None, etag)
-    if uf not in ("br", "zz", *contador.UFS):
-        return contador.Resposta(404, None, etag)
+        return cliente.Resposta(404, None, etag)
+    if uf not in ("br", "zz", *catalogo.UFS):
+        return cliente.Resposta(404, None, etag)
     if municipio and municipio not in {tse for tse, _, _ in cidades_da_uf(uf)}:
-        return contador.Resposta(404, None, etag)
+        return cliente.Resposta(404, None, etag)
     passo, p = progresso()
     marca = f'"{passo}"'
     if etag == marca:
-        return contador.Resposta(304, None, marca)
+        return cliente.Resposta(304, None, marca)
     dados = montar(cargo, uf, turno, municipio, p)
-    return contador.Resposta(404, None, etag) if dados is None else contador.Resposta(200, dados, marca)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Demonstração com TSE falso (nada sai da máquina).")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--porta", type=int, default=8000)
-    parser.add_argument("--duracao", type=int, default=300, help="segundos da apuração, de 0 a 100%%")
-    parser.add_argument("--passo", type=int, default=10, help="segundos entre totalizações novas")
-    args = parser.parse_args()
-    RELOGIO.update(inicio=time.time(), passo=max(1, args.passo), duracao=max(args.passo, args.duracao))
-    contador.buscar = buscar_falso
-    servidor.VARREDOR.por_segundo = max(servidor.VARREDOR.por_segundo, 50)  # sem TSE de verdade, o mapa por município enche logo
-    print(f"TSE FALSO: dados inventados. Abra http://{args.host}:{args.porta}/?ambiente=simulado", flush=True)
-    sys.argv = ["servidor.py", "--host", args.host, "--porta", str(args.porta)]
-    servidor.main()
-
-
-if __name__ == "__main__":
-    main()
+    return cliente.Resposta(404, None, etag) if dados is None else cliente.Resposta(200, dados, marca)

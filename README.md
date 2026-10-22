@@ -42,7 +42,8 @@ A porta é publicada só em `127.0.0.1`. Para abrir ao público, veja [Colocar n
 ### Sem Docker
 
 ```bash
-make web                 # ou: python3 servidor.py --porta 8000
+make web                 # ou: python3 -m contador.servidor --porta 8000
+make demo                # TSE de mentira, a apuração avança sozinha, sem rede (ou: python3 -m contador.demo)
 ```
 
 ### Colocar numa VPS
@@ -121,12 +122,12 @@ Só dispara com CI verde, em `push` na `main` deste repositório (nunca em PR ne
 ### No terminal
 
 ```bash
-python3 contador.py                              # presidente, Brasil
-python3 contador.py -c governador --uf sp        # governador de São Paulo
-python3 contador.py -c senador --uf mg --top 5   # senador de Minas, 5 primeiros
-python3 contador.py -c governador --uf sp --cidade campinas   # só a cidade de Campinas
-python3 contador.py --turno 2                    # segundo turno (25/10)
-python3 contador.py --ambiente simulado          # dados de teste do TSE
+python3 -m contador                              # presidente, Brasil
+python3 -m contador -c governador --uf sp        # governador de São Paulo
+python3 -m contador -c senador --uf mg --top 5   # senador de Minas, 5 primeiros
+python3 -m contador -c governador --uf sp --cidade campinas   # só a cidade de Campinas
+python3 -m contador --turno 2                    # segundo turno (25/10)
+python3 -m contador --ambiente simulado          # dados de teste do TSE
 ```
 
 | Opção | O que faz | Padrão |
@@ -148,9 +149,9 @@ Antes da apuração começar, o arquivo oficial já existe com os candidatos e t
 ```mermaid
 flowchart LR
     TSE["TSE<br/>resultados.tse.jus.br<br/>(JSON atrás de CDN)"]
-    SRV["servidor.py<br/>cache compartilhado"]
+    SRV["contador.servidor<br/>cache compartilhado"]
     WEB["Página web"]
-    CLI["contador.py<br/>terminal"]
+    CLI["contador<br/>terminal"]
     TSE -- "a cada 10 s · ETag / 304" --> SRV
     SRV -- "a cada 5 s" --> WEB
     TSE -- "a cada 10 s" --> CLI
@@ -247,7 +248,7 @@ Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar
 
 `GET /api/camara` (aceita `ambiente`) devolve o hemiciclo da Câmara: `partidos: [{"partido", "cadeiras", "bloco"}]`, `blocos: [{"bloco", "federacao", "partidos", "cadeiras"}]` (cada bloco é uma federação do TSE ou um partido isolado), `eleitos`, `total` (513) e `ufs_com_dados` de `ufs_total`. `GET /api/maisvotados` (aceita `cargo`: `deputado-federal`, `deputado-estadual` ou `deputado-distrital`, e `ambiente`) devolve os 20 mais votados do país em `candidatos`, com `ufs_com_dados` de `ufs_total`; estadual e distrital formam um ranking só. Eleitos são os que o TSE marca como "Eleito" no arquivo.
 
-Esses dois precisam de um arquivo de deputados por UF (27 por cargo). Quem busca é o **varredor** (`varredura.py`): uma thread só, no máximo `BUSCAS_EXTRAS_POR_SEGUNDO` buscas por segundo no total (padrão 2, contra o limite de 100 do TSE; `0` desliga os recursos e as rotas dão `503`), só enquanto alguém está olhando (5 min sem ninguém, a thread encerra), com `If-None-Match` (o TSE responde 304 sem corpo) e guardando só um resumo de cada UF. Um `403` ou `429` pausa tudo por 10 minutos e 3 respostas `404` seguidas pausam por 1 minuto. As respostas **enchem aos poucos** (`ufs_com_dados` cresce a cada busca); depois de apurada, cada UF é revista a cada 30 minutos, e antes disso a cada 90 s.
+Esses dois precisam de um arquivo de deputados por UF (27 por cargo). Quem busca é o **varredor** (`contador/varredor.py`): uma thread só, no máximo `BUSCAS_EXTRAS_POR_SEGUNDO` buscas por segundo no total (padrão 2, contra o limite de 100 do TSE; `0` desliga os recursos e as rotas dão `503`), só enquanto alguém está olhando (5 min sem ninguém, a thread encerra), com `If-None-Match` (o TSE responde 304 sem corpo) e guardando só um resumo de cada UF. Um `403` ou `429` pausa tudo por 10 minutos e 3 respostas `404` seguidas pausam por 1 minuto. As respostas **enchem aos poucos** (`ufs_com_dados` cresce a cada busca); depois de apurada, cada UF é revista a cada 30 minutos, e antes disso a cada 90 s.
 
 ### Mapa por município
 
@@ -259,7 +260,7 @@ O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {c
 
 ### Mapa-múndi
 
-Brasileiros votam no exterior para presidente. O TSE publica isso como a UF `zz` e, dentro dela, **uma "cidade" por embaixada ou consulado** (186 em 2026, de Abidjã a Zurique), sem dizer o país. `exterior.py` liga cada cidade a um país (tabela `PAISES`, código ISO 3166-1 alfa-2; uma cidade nova que não esteja na tabela fica fora do mapa e entra em `sem_pais`) e soma as cidades de cada país.
+Brasileiros votam no exterior para presidente. O TSE publica isso como a UF `zz` e, dentro dela, **uma "cidade" por embaixada ou consulado** (186 em 2026, de Abidjã a Zurique), sem dizer o país. `contador/recursos/exterior.py` liga cada cidade a um país (tabela `PAISES`, código ISO 3166-1 alfa-2; uma cidade nova que não esteja na tabela fica fora do mapa e entra em `sem_pais`) e soma as cidades de cada país.
 
 `GET /api/mundo` (`turno`, `ambiente` e, opcional, `pais`) devolve `{"total", "carregadas", "sem_pais", "idade_s", "locais": {"PT": 3}, "paises": {"PT": {...}}, "brasil": {...}}`. Cada país tem `locais`, `carregados`, `votos`, `apurado`, `final`, `situacao` (`lider`, `empate`, `zerado` ou `sem_dados`) e, com líder, `lider`, `segundo`, `margem` e `margem_votos`. Só entram os países com cidade já buscada; `locais` lista todos os que têm urna. O percentual é sobre os votos nos candidatos. O Brasil vem da soma das 27 UFs do resumo por UF, sem o exterior. Com `pais=PT`, a resposta traz `detalhe`: `candidatos` (votos e percentual) e `cidades` com o líder de cada uma. As cidades são buscadas pelo varredor, nas mesmas regras do mapa por município (teto de `BUSCAS_EXTRAS_POR_SEGUNDO`, só enquanto alguém olha, só se o arquivo do exterior existe). O desenho dos países vem em `GET /geo/mundo.json` (`{"w", "h", "m": {ISO: caminho SVG}, "n": {ISO: nome em português}}`, uns 80 KB), gerado por `python3 tools/gerar_mapa.py --mundo web/geo` a partir do Natural Earth (domínio público; projeção de Miller, sem a Antártida).
 
@@ -336,44 +337,65 @@ Ideias soltas, fora do Roadmap original: alerta por push de verdade (hoje só co
 
 - Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor. A exceção são os recursos que precisam de dezenas ou centenas de arquivos (hemiciclo da Câmara, mais votados, mapa por município e exterior por país): quem busca é só o varredor, com teto de `BUSCAS_EXTRAS_POR_SEGUNDO` no total (padrão 2, contra os 100 do TSE) e só enquanto alguém olha.
 - Manter a página sem dependência de CDN nem etapa de build (os arquivos de `web/` saem do servidor como estão), e o tema claro e escuro. Cada recurso novo da página ganha o próprio arquivo em `web/js/` e entra em `web/index.html`; os scripts são clássicos e compartilham o escopo global, então a ordem das tags importa (`base.js` primeiro, `iniciar.js` por último).
-- Cada item novo ganha teste em `test_servidor.py` ou `test_contador.py`.
+- Cada item novo ganha teste em `tests/`, no mesmo caminho do módulo (`contador/recursos/mapa.py` → `tests/recursos/test_mapa.py`).
 - Atualizar a seção [API](#api) quando criar endpoint.
 
 ## Estrutura
 
 ```
-contador.py        leitura do TSE e placar no terminal
-servidor.py        servidor web: cache compartilhado, rotas e API
-web/               tudo que o navegador recebe, servido como está
-  index.html       a página (só o HTML; o servidor põe as meta tags de prévia no `<head>`)
-  estilo.css       estilos, tema claro e escuro
-  js/              um script por recurso: base, painel, mapa-brasil, mapa-municipios, zoom-mapa, evolucao, hemiciclo…
-  sw.js            service worker (app instalável)
-  geo/             desenho e nome dos municípios, uma UF por arquivo
-historico.py       série do placar, replay e feed de atualizações
-mapa.py            resumo por UF: mapa, regiões, disputas e Senado
-deputados.py       hemiciclo da Câmara e mais votados
-municipios.py      mapa por município
-exterior.py        exterior por país (mapa-múndi)
-varredura.py       varredor de segundo plano (poucas buscas por segundo, no total)
-compartilhar.py    meta tags e imagem de prévia do link
-imagem.py          gerador de PNG (cartão de prévia e ícones), só zlib
-anuncio.py         faixa de anúncio no topo
-tools/             geradores dos desenhos do mapa (IBGE)
-tse_falso.py       TSE de mentira para demonstração e testes
-test_*.py          testes (unittest)
-deploy/            deploy.sh: o que roda na VPS no deploy automático
-.github/workflows/  ci.yml (testes) e deploy.yml (deploy na VPS quando a CI passa na main)
-Dockerfile         imagem da página web
-compose.yaml       sobe a página web com Docker
-Makefile           atalhos: make up, make web, make teste
-docs/painel.jpg    imagem usada neste README
+contador/                       o programa (pacote Python, só biblioteca padrão)
+  __main__.py                   python3 -m contador: placar no terminal
+  terminal.py                   a linha de comando do placar
+  caminhos.py                   onde fica a pasta web/
+  varredor.py                   busca em segundo plano os arquivos que dependem de muitas UFs ou cidades
+  tse/                          acesso ao TSE
+    catalogo.py                 ambientes, cargos, UFs e o endereço de cada arquivo
+    cliente.py                  consulta HTTP (ETag, gzip)
+    cache.py                    cache compartilhado, com teto de buscas e de 404
+    leitura.py                  números, candidatos, nomes e cidades dos arquivos JSON
+  recursos/                     um módulo por recurso: resumos puros do que o TSE publica
+    placar.py                   placar de uma seleção
+    mapa.py                     resumo por UF: mapa, regiões, disputas e Senado
+    municipios.py               mapa por município
+    exterior.py                 exterior por país (mapa-múndi)
+    deputados.py                hemiciclo da Câmara e mais votados
+    historico.py                série do placar, replay e feed de atualizações
+  divulgacao/
+    compartilhar.py             meta tags e imagem de prévia do link
+    imagem.py                   gerador de PNG (cartão de prévia e ícones), só zlib
+    anuncio.py                  faixa de anúncio no topo
+  servidor/                     python3 -m contador.servidor
+    app.py                      a linha de comando que sobe o servidor
+    handler.py                  o HTTP: escolhe a rota e envia a resposta
+    estado.py                   cache, histórico, varredor e anúncio do processo
+    validacao.py                só valores conhecidos chegam à URL do TSE
+    respostas.py                erro do TSE, cidades da UF e respostas prontas
+    estaticos.py                arquivos de web/ (com ETag e gzip) e os desenhos dos mapas
+    rotas/                      uma rota (ou poucas) por arquivo; __init__.py liga cada caminho à função
+  demo/                         python3 -m contador.demo: TSE de mentira para demonstração e testes
+web/                            tudo que o navegador recebe, servido como está
+  index.html                    a página (só o HTML; o servidor põe as meta tags de prévia no `<head>`)
+  estilo.css                    estilos, tema claro e escuro
+  js/                           um script por recurso: base, painel, mapa-brasil, mapa-municipios, zoom-mapa, evolucao, hemiciclo…
+  sw.js                         service worker (app instalável)
+  geo/                          desenho e nome dos municípios, uma UF por arquivo
+tools/                          geradores dos desenhos do mapa (IBGE)
+deploy/                         deploy.sh: o que roda na VPS no deploy automático
+.github/workflows/              ci.yml (testes) e deploy.yml (deploy na VPS quando a CI passa na main)
+tests/                          testes (unittest), no mesmo caminho do módulo que testam
+Dockerfile                      imagem da página web
+compose.yaml                    sobe a página web com Docker
+Makefile                        atalhos: make up, make web, make demo, make teste
+docs/painel.jpg                 imagem usada neste README
 ```
+
+Dependências: `tse` não usa nenhum outro pacote do projeto, `recursos`, `divulgacao` e `varredor` usam só `tse`, e `servidor` junta tudo. As rotas leem o cache e o histórico como `estado.CACHE` e `estado.HISTORICO` (os testes trocam esses objetos).
 
 ## Desenvolvimento
 
 ```bash
 make teste               # ou: python3 -m unittest -v
+python3 -m unittest tests.recursos.test_mapa   # um arquivo só
 ```
 
 Os testes não acessam a internet. A CI (`.github/workflows/ci.yml`) roda os testes no Python 3.9 e 3.12 e constrói a imagem Docker.

@@ -19,7 +19,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY contador.py servidor.py anuncio.py compartilhar.py deputados.py exterior.py historico.py imagem.py mapa.py municipios.py varredura.py ./
+COPY contador ./contador
 COPY web ./web
 USER app
 
@@ -27,4 +27,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/saude', timeout=3)"
 
-CMD ["python", "servidor.py", "--host", "0.0.0.0", "--porta", "8000"]
+CMD ["python", "-m", "contador.servidor", "--host", "0.0.0.0", "--porta", "8000"]

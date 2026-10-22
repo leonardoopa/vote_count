@@ -40,9 +40,15 @@ class TseFalso(unittest.TestCase):
     def votos_de(self, dados, numero):
         return next(int(c["vap"]) for c in contador.candidatos(dados) if c["n"] == numero)
 
-    def test_brasil_e_a_soma_das_ufs(self):
-        total = sum(self.votos_de(pedir("presidente", uf, 1, 0.4).dados, "13") for uf in contador.UFS)
+    def test_brasil_e_a_soma_das_ufs_e_do_exterior(self):
+        total = sum(self.votos_de(pedir("presidente", uf, 1, 0.4).dados, "13") for uf in (*contador.UFS, "zz"))
         self.assertEqual(self.votos_de(pedir("presidente", "br", 1, 0.4).dados, "13"), total)
+
+    def test_exterior_so_para_presidente(self):
+        self.assertEqual(pedir("presidente", "zz", 1, 0.5).status, 200)
+        for cargo in ("governador", "senador"):
+            with self.subTest(cargo=cargo):
+                self.assertEqual(pedir(cargo, "zz", 1, 0.5).status, 404)
 
     def test_governador_so_tem_segundo_turno_onde_ninguem_passou_de_50(self):
         com, sem = [], []

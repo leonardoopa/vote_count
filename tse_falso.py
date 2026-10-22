@@ -50,6 +50,7 @@ def semente(*partes):
 
 
 SECOES = {uf: 3000 + semente("secoes", uf) % 40000 for uf in contador.UFS}
+SECOES["zz"] = 1500 + semente("secoes", "zz") % 2500  # exterior: só presidente
 
 
 def codigo_cidade(uf, indice):
@@ -135,9 +136,9 @@ def numeros(cargo, uf, turno, municipio, p):
 
 
 def numeros_do_brasil(turno, p):
-    """Presidente no Brasil: a soma das 27 UFs, para o mapa e o placar nacional baterem."""
+    """Presidente no Brasil: a soma das 27 UFs e do exterior, para o mapa e o placar nacional baterem."""
     soma = None
-    for uf in contador.UFS:
+    for uf in (*contador.UFS, "zz"):
         parte = numeros("presidente", uf, turno, "", p)
         if soma is None:
             soma = {**parte, "votos": dict(parte["votos"])}
@@ -218,7 +219,9 @@ def buscar_falso(url, etag=None):
     tipo, turno = ELEICOES.get(eleicao, (None, None))
     if cargo not in ("presidente", "governador", "senador") or contador.CARGOS[cargo][1] != tipo:
         return contador.Resposta(404, None, etag)
-    if not (uf == "br" and cargo == "presidente" and not municipio) and uf not in contador.UFS:
+    if uf in ("br", "zz") and not (cargo == "presidente" and not municipio):
+        return contador.Resposta(404, None, etag)
+    if uf not in ("br", "zz", *contador.UFS):
         return contador.Resposta(404, None, etag)
     if municipio and municipio not in {codigo_cidade(uf, i) for i in range(len(CIDADES))}:
         return contador.Resposta(404, None, etag)

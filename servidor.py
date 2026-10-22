@@ -39,6 +39,7 @@ LIMITE_BUSCAS_POR_SEGUNDO = 20
 MAX_ENTRADAS = 400
 TTL_MUNICIPIOS = 6 * 3600  # a lista de cidades não muda durante a apuração
 TOP_PADRAO, TOP_MAXIMO = 15, 100
+DISPUTAS_MAXIMO = 27  # todas as UFs; a página mostra as mais apertadas primeiro
 
 
 class Entrada:
@@ -295,6 +296,75 @@ ROTAS_API.update({
 
 
 # ---- mapa, regiões e anúncio ----
+
+# Uma resposta pronta por seleção: vários visitantes dividem o mesmo mapa em vez de cada um abrir
+# a sua rodada de consultas (são 29 arquivos por rodada). Poucas chaves: ambiente x cargo x turno.
+TTL_RESPOSTA_MAPA = 5
+_PRONTAS, _TRAVAS_PRONTAS, _TRAVA_GERAL = {}, {}, threading.Lock()
+
+
+def lembrar(chave, construir, ttl=TTL_RESPOSTA_MAPA):
+    """(status, corpo) de `construir()`, refeito no máximo a cada `ttl` segundos por chave."""
+    with _TRAVA_GERAL:
+        trava = _TRAVAS_PRONTAS.setdefault(chave, threading.Lock())
+    with trava:  # quem chega com a resposta vencida refaz; os outros esperam e reaproveitam
+        pronta = _PRONTAS.get(chave)
+        if pronta is None or time.time() >= pronta[0]:
+            status, corpo = construir()
+            pronta = _PRONTAS[chave] = (time.time() + ttl, status, corpo)
+        return pronta[1], pronta[2]
+
+
+def validar_mapa(consulta, cargos=("presidente", "governador")):
+    """(cargo, ambiente, turno) do mapa: a validação é a de `validar`, que pede uma UF; o mapa usa todas."""
+    cargo = consulta.get("cargo", ["presidente"])[0]
+    if cargo not in cargos:
+        raise ValueError("este recurso só existe para " + " e ".join(cargos))
+    _, _, ambiente, turno, _ = validar({**consulta, "uf": ["br" if cargo == "presidente" else "sp"]})
+    return cargo, ambiente, turno
+
+
+def resumo_do_cargo(cargo, ambiente, turno):
+    """(status, corpo) do resumo por UF: uma rodada de consultas que mapa, regiões e disputas dividem."""
+    def construir():
+        corpo, falha = mapa.resumo_por_uf(CACHE.obter, ambiente, cargo, turno)
+        return erro_do_tse(*falha) if falha else (200, corpo)
+
+    return lembrar(("mapa", ambiente, cargo, turno), construir)
+
+
+def mapa_por_uf(consulta):
+    """Devolve (status HTTP, corpo JSON) com o líder de cada UF, para o mapa do Brasil."""
+    try:
+        cargo, ambiente, turno = validar_mapa(consulta)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    return resumo_do_cargo(cargo, ambiente, turno)
+
+
+def derivado(consulta, cargos, funcao):
+    """Corpo de uma rota que só reorganiza o resumo por UF (regiões, disputas): sem consulta nova ao TSE."""
+    try:
+        cargo, ambiente, turno = validar_mapa(consulta, cargos)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    status, corpo = resumo_do_cargo(cargo, ambiente, turno)
+    return (status, funcao(corpo)) if status == 200 else (status, corpo)
+
+
+def regioes_do_pais(consulta):
+    return derivado({**consulta, "cargo": ["presidente"]}, ("presidente",), mapa.regioes)
+
+
+def disputas_apertadas(consulta):
+    return derivado(consulta, ("governador", "senador"), lambda corpo: mapa.disputas(corpo, limite=DISPUTAS_MAXIMO))
+
+
+ROTAS_API.update({
+    "/api/mapa": mapa_por_uf,
+    "/api/regioes": regioes_do_pais,
+    "/api/disputas": disputas_apertadas,
+})
 
 
 class Handler(BaseHTTPRequestHandler):

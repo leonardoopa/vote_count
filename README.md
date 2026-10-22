@@ -21,7 +21,7 @@ O programa **não conta votos**: ele lê os arquivos JSON de resultado que o TSE
 - Um servidor consulta o TSE e reparte a resposta com todos os visitantes. Mais gente na página não aumenta o acesso ao TSE.
 - Respeita as regras de acesso do TSE (veja [abaixo](#regras-de-acesso-do-tse)).
 - Evolução da apuração com replay, feed de atualizações, resumo da diferença, indicador "ao vivo" e tela cheia para TV.
-- Mapa do Brasil colorido pelo líder de cada UF, painel por região, disputas mais apertadas e mapa por município.
+- Mapa do Brasil colorido pelo líder de cada UF, painel por região, disputas mais apertadas, mapa por município.
 - Hemiciclo da Câmara (por partido e federação) e do Senado, e os mais votados de deputado federal e estadual.
 - Busca rápida (`/` ou `⌘K`), comparação lado a lado, exportação em CSV e JSON, link com prévia e imagem, app instalável e alertas.
 - Só biblioteca padrão do Python. Nada para instalar.
@@ -223,6 +223,12 @@ O desenho vem do IBGE e é entregue em `GET /geo/<uf>.json` (`{"w", "h", "m": {c
 
 **Zoom e nomes.** Passar o mouse (ou tocar) numa cidade mostra o nome e o placar, ou "ainda não carregado". Amplia-se até 40 vezes com os botões **+** e **−**, a pinça, **Ctrl** (**⌘** no Mac) + rolagem ou as teclas `+` `−` `0` com o mapa em foco; arrastar (ou as setas) move, e "Ver tudo" volta. A rolagem comum continua rolando a página. Com zoom, as cidades cuja forma já é larga o bastante ganham o nome escrito no mapa. O traço dos contornos é em pixels da tela, então fica fino em qualquer ampliação.
 
+### Mapa-múndi
+
+Brasileiros votam no exterior para presidente. O TSE publica isso como a UF `zz` e, dentro dela, **uma "cidade" por embaixada ou consulado** (186 em 2026, de Abidjã a Zurique), sem dizer o país. `exterior.py` liga cada cidade a um país (tabela `PAISES`, código ISO 3166-1 alfa-2; uma cidade nova que não esteja na tabela fica fora do mapa e entra em `sem_pais`) e soma as cidades de cada país.
+
+`GET /api/mundo` (`turno`, `ambiente` e, opcional, `pais`) devolve `{"total", "carregadas", "sem_pais", "idade_s", "locais": {"PT": 3}, "paises": {"PT": {...}}, "brasil": {...}}`. Cada país tem `locais`, `carregados`, `votos`, `apurado`, `final`, `situacao` (`lider`, `empate`, `zerado` ou `sem_dados`) e, com líder, `lider`, `segundo`, `margem` e `margem_votos`. Só entram os países com cidade já buscada; `locais` lista todos os que têm urna. O percentual é sobre os votos nos candidatos. O Brasil vem da soma das 27 UFs do resumo por UF, sem o exterior. Com `pais=PT`, a resposta traz `detalhe`: `candidatos` (votos e percentual) e `cidades` com o líder de cada uma. As cidades são buscadas pelo varredor, nas mesmas regras do mapa por município (teto de `BUSCAS_EXTRAS_POR_SEGUNDO`, só enquanto alguém olha, só se o arquivo do exterior existe). O desenho dos países vem em `GET /geo/mundo.json` (`{"w", "h", "m": {ISO: caminho SVG}, "n": {ISO: nome em português}}`, uns 80 KB), gerado por `python3 tools/gerar_mapa.py --mundo web/geo` a partir do Natural Earth (domínio público; projeção de Miller, sem a Antártida).
+
 ### Busca rápida
 
 `GET /api/busca?q=campinas` procura cidades de **todas** as UFs pelo nome, sem diferenciar acento nem caixa (aceita `cargo` e `ambiente`; só entram UFs válidas para o cargo). Devolve até 10 em `{"cidades": [{"uf", "codigo", "nome", "capital"}]}`, com quem começa pelo termo primeiro. Termos de menos de 2 letras dão lista vazia e mais de 40 caracteres dão `400`. A lista vem do arquivo de cidades que o servidor já guarda por 6 h: a busca não faz consulta nova ao TSE. Na página, a busca abre com `/` ou `Ctrl`/`⌘`+`K` e também acha cargos, estados e candidatos do placar que está na tela.
@@ -288,7 +294,7 @@ Ideias soltas, fora do Roadmap original: alerta por push de verdade (hoje só co
 
 ### Regras para quem implementar
 
-- Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor. A exceção são os recursos que precisam de dezenas ou centenas de arquivos (hemiciclo da Câmara, mais votados e mapa por município): quem busca é só o varredor, com teto de `BUSCAS_EXTRAS_POR_SEGUNDO` no total (padrão 2, contra os 100 do TSE) e só enquanto alguém olha.
+- Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor. A exceção são os recursos que precisam de dezenas ou centenas de arquivos (hemiciclo da Câmara, mais votados, mapa por município e exterior por país): quem busca é só o varredor, com teto de `BUSCAS_EXTRAS_POR_SEGUNDO` no total (padrão 2, contra os 100 do TSE) e só enquanto alguém olha.
 - Manter a página sem dependência de CDN nem etapa de build (os arquivos de `web/` saem do servidor como estão), e o tema claro e escuro. Cada recurso novo da página ganha o próprio arquivo em `web/js/` e entra em `web/index.html`; os scripts são clássicos e compartilham o escopo global, então a ordem das tags importa (`base.js` primeiro, `iniciar.js` por último).
 - Cada item novo ganha teste em `test_servidor.py` ou `test_contador.py`.
 - Atualizar a seção [API](#api) quando criar endpoint.
@@ -308,6 +314,7 @@ historico.py       série do placar, replay e feed de atualizações
 mapa.py            resumo por UF: mapa, regiões, disputas e Senado
 deputados.py       hemiciclo da Câmara e mais votados
 municipios.py      mapa por município
+exterior.py        exterior por país (mapa-múndi)
 varredura.py       varredor de segundo plano (poucas buscas por segundo, no total)
 compartilhar.py    meta tags e imagem de prévia do link
 imagem.py          gerador de PNG (cartão de prévia e ícones), só zlib

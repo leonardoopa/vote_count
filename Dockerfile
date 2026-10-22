@@ -19,7 +19,7 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY contador.py servidor.py anuncio.py compartilhar.py deputados.py historico.py imagem.py mapa.py municipios.py varredura.py ./
+COPY contador.py servidor.py anuncio.py compartilhar.py deputados.py exterior.py historico.py imagem.py mapa.py municipios.py varredura.py ./
 COPY web ./web
 USER app
 

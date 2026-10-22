@@ -26,6 +26,7 @@ import anuncio
 import compartilhar
 import contador
 import deputados
+import exterior
 import historico
 import imagem
 import mapa
@@ -447,8 +448,8 @@ ROTAS_API.update({
 
 # ---- mapa por município ----
 
-GEO = WEB / "geo"  # desenhos dos municípios, um arquivo por UF (tools/gerar_mapa.py --municipios)
-ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2})\.json$")
+GEO = WEB / "geo"  # desenhos dos municípios, um arquivo por UF, e o do mundo (tools/gerar_mapa.py --municipios e --mundo)
+ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2}|mundo)\.json$")
 
 
 def mapa_municipal(consulta):
@@ -484,7 +485,7 @@ def mapa_municipal(consulta):
 def desenho_dos_municipios(caminho, cabecalhos=None):
     """(status, tipo, corpo, extras) do arquivo geo/<uf>.json, ou None se o caminho não é de um desenho."""
     achado = ARQUIVO_GEO.match(caminho)
-    if not achado or achado[1] not in contador.UFS:
+    if not achado or (achado[1] != "mundo" and achado[1] not in contador.UFS):
         return None
     arquivo = GEO / f"{achado[1]}.json"
     if not arquivo.is_file():
@@ -493,6 +494,44 @@ def desenho_dos_municipios(caminho, cabecalhos=None):
 
 
 ROTAS_API["/api/mapa-municipal"] = mapa_municipal
+
+
+# ---- mapa-múndi: o voto no exterior por país ----
+
+def mundo(consulta):
+    """(status, corpo) do exterior por país, para o mapa-múndi. Com `pais` (ISO alfa-2), traz também o detalhe dele.
+
+    O TSE publica um arquivo por cidade do exterior (embaixadas e consulados); o varredor busca os 186 aos poucos, como no mapa
+    por município, e `exterior.py` soma por país. O Brasil vem do resumo por UF, que a página já pede.
+    """
+    ambiente, turno = consulta.get("ambiente", ["oficial"])[0], consulta.get("turno", ["1"])[0]
+    pais = consulta.get("pais", [""])[0].upper()
+    if ambiente not in contador.AMBIENTES or turno not in ("1", "2") or (pais and not re.fullmatch(r"[A-Z]{2}", pais)):
+        return 400, {"erro": "ambiente, turno ou país inválido"}
+    if not VARREDOR.ligado:
+        return RECURSO_DESLIGADO
+    turno = int(turno)
+    config, status, _ = CACHE.obter(contador.url_municipios(ambiente, "presidente", turno), ttl=TTL_MUNICIPIOS)
+    if config is None:
+        return erro_do_tse(status, "O TSE não publicou a lista de cidades desta eleição.")
+    dados, status, _ = CACHE.obter(contador.montar_url(ambiente, "presidente", "zz", turno))
+    if dados is None:   # só varre se o arquivo do exterior existe (no 2º turno ele só aparece depois da apuração começar)
+        return erro_do_tse(status, "O TSE ainda não publicou o resultado do exterior.")
+    cidades = exterior.cidades_do_exterior(config)
+
+    def fabrica():
+        trabalhos = {c["codigo"]: varredura.Trabalho(c["codigo"], contador.montar_url(ambiente, "presidente", "zz", turno, municipio=c["codigo"])) for c in cidades}
+        return trabalhos, exterior.resumir_cidade, municipios.intervalo
+
+    grupo = VARREDOR.pedir(("exterior", ambiente, turno), fabrica)
+    corpo = exterior.montar(cidades, VARREDOR.resumos(grupo), VARREDOR.relogio(), pais or None)
+    corpo.update(ambiente=ambiente, turno=turno)
+    status_do_mapa, mapa_dos_estados = resumo_do_cargo("presidente", ambiente, turno)
+    corpo["brasil"] = exterior.brasil(mapa_dos_estados) if status_do_mapa == 200 else None
+    return 200, corpo
+
+
+ROTAS_API["/api/mundo"] = mundo
 
 
 # ---- busca rápida ----

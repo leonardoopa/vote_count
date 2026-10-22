@@ -1,0 +1,126 @@
+# Deploy automático: quando a CI passa na main, atualiza a VPS (SSH + deploy/deploy.sh).
+# Os secrets e as variáveis estão listados no README, seção "Deploy automático".
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit da main para colocar no ar (40 caracteres). Vazio: a ponta da main."
+        required: false
+        default: ""
+
+# Um deploy por vez, e um deploy em andamento nunca é cortado no meio.
+concurrency:
+  group: deploy-producao
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy na VPS
+    # DEPLOY_AUTOMATICO=false (variável do repositório) desliga tudo, inclusive o disparo manual.
+    # Pela CI, só vale push na main deste repositório (nunca PR, nunca fork) e só se a CI passou.
+    if: >-
+      vars.DEPLOY_AUTOMATICO != 'false' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Escolher o commit
+        id: alvo
+        env:
+          SHA_DA_CI: ${{ github.event.workflow_run.head_sha }}
+          SHA_MANUAL: ${{ inputs.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha="${SHA_MANUAL:-$SHA_DA_CI}"
+          if [ -z "$sha" ]; then
+            sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)"
+          fi
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Commit inválido: use os 40 caracteres do SHA (ou deixe vazio)."
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Commit para produção: $sha"
+
+      # Sem ref: vem a ponta da main, com a versão mais nova do deploy.sh (vale também para voltar a um commit antigo).
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Conferir os secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          faltam=""
+          for nome in VPS_HOST VPS_USER VPS_PATH VPS_SSH_KEY VPS_KNOWN_HOSTS; do
+            [ -n "${!nome}" ] || faltam="$faltam $nome"
+          done
+          if [ -n "$faltam" ]; then
+            echo "::error::Faltam secrets no environment production:$faltam (veja o README, seção Deploy automático)."
+            exit 1
+          fi
+
+      - name: Preparar o SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy na VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          SHA: ${{ steps.alvo.outputs.sha }}
+        run: |
+          # A chave do servidor é conferida contra o known_hosts do secret: sem isso a conexão é recusada.
+          ssh -i ~/.ssh/deploy_key -p "${VPS_PORT:-22}" \
+            -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 \
+            "$VPS_USER@$VPS_HOST" bash -s -- "$SHA" "$VPS_PATH" < deploy/deploy.sh
+
+      # Opcional: confere de fora, pela internet, o que os usuários veem (variável PRODUCAO_URL, ex.: https://votos.seudominio.com.br).
+      - name: Conferir /saude pela internet
+        if: vars.PRODUCAO_URL != ''
+        env:
+          URL: ${{ vars.PRODUCAO_URL }}
+        run: curl -fsS --retry 6 --retry-delay 5 --retry-all-errors --max-time 10 "${URL%/}/saude"
+
+      - name: Resumo
+        if: always()
+        env:
+          SHA: ${{ steps.alvo.outputs.sha }}
+          RESULTADO: ${{ job.status }}
+        run: |
+          {
+            echo "### Deploy na VPS"
+            echo "- Commit: \`$SHA\`"
+            echo "- Resultado: $RESULTADO"
+            echo "- O SHA que estava no ar antes aparece no log do passo \"Deploy na VPS\"."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apagar a chave do runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts

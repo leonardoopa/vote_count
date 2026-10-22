@@ -147,5 +147,43 @@ class Deploy(unittest.TestCase):
         self.assertFalse((self.trava / "vote_count-deploy.lock").exists())
 
 
+class Workflow(unittest.TestCase):
+    """Conferências estáticas do workflow: o que não pode mudar sem querer."""
+
+    TEXTO = Path(__file__).with_name(".github").joinpath("workflows", "deploy.yml").read_text(encoding="utf-8")
+
+    def test_so_roda_depois_da_ci_na_main_e_nunca_em_pull_request(self):
+        for trecho in ("workflows: [CI]", "branches: [main]", "github.event.workflow_run.conclusion == 'success'", "github.event.workflow_run.event == 'push'",
+                       "github.event.workflow_run.head_branch == 'main'", "head_repository.full_name == github.repository"):
+            self.assertIn(trecho, self.TEXTO)
+        self.assertNotIn("pull_request", self.TEXTO)
+
+    def test_um_deploy_por_vez_sem_cortar_o_que_esta_rodando(self):
+        self.assertIn("group: deploy-producao", self.TEXTO)
+        self.assertIn("cancel-in-progress: false", self.TEXTO)
+
+    def test_permissoes_minimas_e_ambiente_de_producao(self):
+        self.assertIn("permissions:\n  contents: read", self.TEXTO)
+        self.assertIn("environment: production", self.TEXTO)
+        self.assertNotIn("write", self.TEXTO.replace("persist-credentials", ""))
+
+    def test_ssh_confere_a_chave_do_servidor(self):
+        self.assertIn("StrictHostKeyChecking=yes", self.TEXTO)
+        self.assertNotIn("StrictHostKeyChecking=no", self.TEXTO)
+        self.assertNotIn("ssh-keyscan", self.TEXTO)          # o known_hosts vem de um secret, não da rede na hora do deploy
+
+    def test_secrets_so_entram_por_variavel_de_ambiente(self):
+        """`${{ secrets.X }}` dentro do script de `run:` viraria texto do comando (e pode vazar ou quebrar): só em `env:`."""
+        for linha in self.TEXTO.splitlines():
+            if "secrets." in linha:
+                self.assertRegex(linha, r"^\s+[A-Z_]+: \$\{\{ secrets\.[A-Z_]+ \}\}$", linha)
+
+    def test_desligar_pela_variavel(self):
+        self.assertIn("vars.DEPLOY_AUTOMATICO != 'false'", self.TEXTO)
+
+    def test_chave_nao_fica_no_runner(self):
+        self.assertIn("rm -f ~/.ssh/deploy_key", self.TEXTO)
+
+
 if __name__ == "__main__":
     unittest.main()

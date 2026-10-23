@@ -55,23 +55,24 @@
       <button class="botao" id="abrir-compartilhar" type="button">Compartilhar</button>
       <button class="botao" id="tela-cheia" type="button" hidden>Tela cheia</button>
     </div>
+
+    <form class="filtros" id="filtros" onsubmit="return false">
+      <label hidden>Cargo <select id="cargo"></select></label>
+      <label>Território <select id="uf"></select></label>
+      <label class="cidade" id="rotulo-cidade" hidden>Cidade
+        <input id="cidade" type="search" list="cidades" placeholder="Todo o estado — digite para buscar" autocomplete="off" autocapitalize="words" spellcheck="false">
+        <datalist id="cidades"></datalist>
+      </label>
+      <label>Turno
+        <select id="turno"><option value="1">1º turno (04/10)</option><option value="2">2º turno (25/10)</option></select>
+      </label>
+      <label>Dados
+        <select id="ambiente"><option value="oficial">Oficiais do TSE</option><option value="simulado">Simulado (teste)</option></select>
+      </label>
+    </form>
   </header>
   <nav class="abas sub-abas" id="abas-deputado" aria-label="Tipo de deputado" hidden></nav>
 
-  <form class="filtros" id="filtros" onsubmit="return false">
-    <label hidden>Cargo <select id="cargo"></select></label>
-    <label>Território <select id="uf"></select></label>
-    <label class="cidade" id="rotulo-cidade" hidden>Cidade
-      <input id="cidade" type="search" list="cidades" placeholder="Todo o estado — digite para buscar" autocomplete="off" autocapitalize="words" spellcheck="false">
-      <datalist id="cidades"></datalist>
-    </label>
-    <label>Turno
-      <select id="turno"><option value="1">1º turno (04/10)</option><option value="2">2º turno (25/10)</option></select>
-    </label>
-    <label>Dados
-      <select id="ambiente"><option value="oficial">Oficiais do TSE</option><option value="simulado">Simulado (teste)</option></select>
-    </label>
-  </form>
 
   <p class="aviso" id="aviso" role="status" hidden></p>
 

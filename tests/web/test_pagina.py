@@ -200,6 +200,34 @@ const casos = JSON.parse(process.argv[2]);
         self.assertEqual(saida["respondeu"], [caso[3] for caso in casos])
         self.assertEqual(saida["guardados"], ["/", "/", "/js/base.js", "/estilo.css"])      # só a página e os arquivos dela
 
+    def test_nenhum_nome_global_repetido_entre_scripts(self):
+        """Os scripts dividem o escopo global: `const` repetido quebra o carregamento, mas `function` repetida só
+        sobrescreve a outra em silêncio. Cada nome de nível de cima tem um dono só."""
+        donos = {}
+        for nome in ARQUIVOS_JS:
+            texto = (WEB / "js" / f"{nome}.js").read_text(encoding="utf-8")
+            for achado in re.finditer(r"^(?:async\s+)?function\s+([A-Za-z0-9_$]+)|^(?:const|let|var)\s+([A-Za-z0-9_$]+)", texto, re.M):
+                donos.setdefault(achado.group(1) or achado.group(2), []).append(nome)
+        repetidos = {identificador: arquivos for identificador, arquivos in donos.items() if len(arquivos) > 1}
+        self.assertEqual(repetidos, {})
+
+    def test_replay_do_mapa_conta_os_estados_por_lider(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node não está instalado")
+        fonte = re.search(r"(function contagemDaFoto\(.*?\n\})", script(), re.S).group(1)
+        foto = {"t": 1, "ufs": {"sp": ["PT", 5.0, 50.0], "rj": ["PL", 1.0, 50.0], "mg": ["PT", 9.0, 40.0], "ba": ["", 0.0, 0.0], "pr": ["", 0.0, 0.0]}}
+        programa = fonte + f"\nprocess.stdout.write(JSON.stringify(contagemDaFoto({json.dumps(foto)})));"
+        saida = json.loads(subprocess.run([node, "-e", programa], capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(saida, {"contagem": [["PT", 2], ["PL", 1]], "semLider": 2})   # do que mais lidera para o que menos lidera
+
+    def test_mapa_de_sempre_continua_pintando_sem_o_replay(self):
+        """O replay só mexe no mapa por ganchos: sem mapa-ao-vivo.js o desenho e a pintura continuam completos."""
+        mapa_brasil = (WEB / "js" / "mapa-brasil.js").read_text(encoding="utf-8")
+        self.assertIn("if (mapaCongelado) return;", mapa_brasil)
+        self.assertIn("avisar(aoPintarUfs, d);", mapa_brasil)
+        self.assertEqual(ARQUIVOS_JS.index("mapa-brasil") < ARQUIVOS_JS.index("mapa-ao-vivo"), True)   # usa o que o mapa-brasil declara
+
     def test_sintaxe_do_javascript(self):
         node = shutil.which("node")
         if not node:

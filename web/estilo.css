@@ -445,3 +445,49 @@ html.embed .rodape p:nth-child(2) { display: none; }
   .mapa-svg path.mudou { animation: none; }
   .mapa-svg path { transition: none; }
 }
+
+/* ===== pele cinematográfica: os mapas e o hemiciclo como telas escuras (nos dois temas) =====
+   Os cartões da coluna do meio trocam os tokens de tema pelos do tema escuro: o resto do CSS (legendas, botões, tabelas,
+   traços do mapa) já usa os tokens e acompanha. Os números grandes ganham uma serifa do sistema, sem baixar fonte. */
+:root { --serifa: ui-serif, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif; }
+.duelo-titulo, .duelo-pct, .heroi .valor, .resumo-principal .valor, .resumo-destaques .valor, .indicador .valor { font-family: var(--serifa); font-weight: 600; }
+#palco > .cartao {
+  --surface: #0f0e0d; --ink: #f3f1ec; --ink-2: #b9b5ab; --muted: #8a867c; --grid: #2c2a26; --baseline: #4a4740;
+  --border: rgba(255, 255, 255, 0.11); --wash: rgba(255, 255, 255, 0.06); --series: #3987e5; --track: #0d366b; --good: #34d27b;
+  --p-azul: #3987e5; --p-laranja: #e0652e; --p-agua: #1fb383; --p-amarelo: #d99200; --p-magenta: #dd5d8d;
+  --p-verde: #1ab31a; --p-violeta: #9085e9; --p-vermelho: #ee6f6e; --p-outros: #98958c;
+  color: var(--ink); border-radius: 18px;
+  background: radial-gradient(110% 80% at 30% 8%, #201d18 0%, var(--surface) 62%), var(--surface);
+  box-shadow: 0 28px 70px -34px rgba(0, 0, 0, 0.65);
+}
+#palco > .cartao h2, #palco > .cartao h3 { font-family: var(--serifa); font-weight: 600; letter-spacing: -0.01em; }
+#palco > .cartao h2 { font-size: 1.25rem; }
+#palco > .cartao .botao, #palco > .cartao .pt-link { background: rgba(255, 255, 255, 0.07); color: var(--ink); border-color: var(--border); }
+#palco > .cartao .botao:hover { background: rgba(255, 255, 255, 0.15); }
+#palco > .cartao .evo-legenda li { padding: 2px 10px 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255, 255, 255, 0.05); font-size: 0.75rem; }
+#palco > .cartao .evo-rolagem thead th { background: #181613; }
+#palco .mapa-svg path { transition: fill 0.8s ease, fill-opacity 0.8s ease, opacity 0.15s, filter 0.2s; }
+/* o mapa com o mouse em cima de um estado: os outros recuam */
+#mapa .mapa-svg svg:not(.focando) > g:first-child:hover path:not(:hover) { opacity: 0.55; }
+
+/* ondas, entrada e o estado que trocou de líder */
+.mapa-svg .onda { fill: none; stroke-width: 2.4px; vector-effect: non-scaling-stroke; transform-box: fill-box; transform-origin: center; pointer-events: none; animation: onda 1.9s ease-out forwards; }
+.mapa-svg .onda-forte { stroke-width: 4px; animation-duration: 2.6s; }
+@keyframes onda { from { transform: scale(0.25); opacity: 0.95; } to { transform: scale(7); opacity: 0; } }
+.mapa-svg path.virou { animation: virou 1.7s ease-out; }
+@keyframes virou { 0%, 100% { filter: none; } 25% { filter: brightness(2.1) saturate(1.4); } }
+.mapa-svg svg.entrando path { animation: acender 0.9s ease-out both; animation-delay: calc(var(--i, 0) * 30ms); }
+@keyframes acender { from { opacity: 0; filter: brightness(2.4); } to { opacity: 1; filter: none; } }
+
+/* rever a noite */
+.replay-mapa { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.replay-mapa input[type="range"] { flex: 1 1 140px; min-width: 0; accent-color: var(--ink); }
+.replay-mapa .replay-hora { color: var(--ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.replay-mapa .evo-legenda { flex-basis: 100%; margin: 0; }
+.replay-mapa .evo-legenda[hidden] { display: none; }
+#mapa.em-replay #mapa-legenda { display: none; }
+#mapa.em-replay .mapa-svg path { transition-duration: 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .mapa-svg .onda, .mapa-svg path.virou, .mapa-svg svg.entrando path { animation: none; }
+  #palco .mapa-svg path { transition: none; }
+}

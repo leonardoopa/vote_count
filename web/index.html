@@ -24,6 +24,7 @@
 <script defer src="/js/mundo.js"></script>
 <script defer src="/js/anuncio.js"></script>
 <script defer src="/js/palco.js"></script>
+<script defer src="/js/mapa-ao-vivo.js"></script>
 <script defer src="/js/abas.js"></script>
 <script defer src="/js/duelo.js"></script>
 <script defer src="/js/compartilhar.js"></script>
@@ -162,6 +163,13 @@
         <p class="evo-eixos" id="mapa-explica"></p>
         <ul class="evo-legenda" id="mapa-legenda"></ul>
         <div class="mapa-svg" id="mapa-svg"></div>
+        <div class="replay-mapa" id="replay-mapa">
+          <button class="botao" id="replay-mapa-play" type="button" aria-pressed="false">▶ Rever a noite</button>
+          <input id="replay-mapa-linha" type="range" min="0" max="1" step="1" value="0" aria-label="Linha do tempo do mapa" hidden>
+          <span class="replay-hora" id="replay-mapa-hora" role="status"></span>
+          <button class="botao" id="replay-mapa-vivo" type="button" hidden>Voltar ao vivo</button>
+          <ul class="evo-legenda" id="replay-mapa-contagem" aria-label="Estados por líder nesse instante" hidden></ul>
+        </div>
         <button class="botao" id="mapa-brasil" type="button" hidden>Ver o Brasil todo</button>
         <details class="evo-tabela">
           <summary>Ver os estados em lista</summary>

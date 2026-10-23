@@ -2,6 +2,8 @@
 const INTERVALO_MAPA = 10000;   // o TSE guarda cada estado por 20 s no servidor: a página só relê o que já está pronto
 const DISPUTAS_INICIAIS = 10;
 let mapaSvg = null;   // o desenho dos estados é montado uma vez por seleção e só repintado a cada rodada
+let mapaCongelado = false;      // true enquanto o replay (mapa-ao-vivo.js) mostra uma foto antiga: a rodada não repinta
+const aoPintarUfs = [];         // (dados) depois que os estados foram repintados; mapa-ao-vivo.js solta as ondas aqui
 let mapaDados = null, regioesDados = null, mapaMarca = "", mapaSeq = 0, mapaTimer = 0, disputasTodas = false, disputasDados = null;
 const temMapa = () => estado.cargo === "presidente" || estado.cargo === "governador";
 const temRegioes = () => estado.cargo === "presidente";
@@ -11,10 +13,13 @@ const pp = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumF
 const nomeDoCandidato = (c) => `${c.nome} (${c.partido})`;
 
 /* Cor do estado: o partido do líder; quanto maior a margem, mais forte (até 20 pontos). Sem líder, cinza. */
+function pinturaDe(partido, margem) {
+  if (!partido) return "fill:var(--muted);fill-opacity:0.3";
+  const forca = 0.35 + 0.65 * Math.min(margem, 20) / 20;
+  return `fill:${corDoPartido(partido)};fill-opacity:${forca.toFixed(2)}`;
+}
 function pintura(r) {
-  if (!r || r.situacao !== "lider") return "fill:var(--muted);fill-opacity:0.3";
-  const forca = 0.35 + 0.65 * Math.min(r.margem, 20) / 20;
-  return `fill:${corDoPartido(r.lider.partido)};fill-opacity:${forca.toFixed(2)}`;
+  return r && r.situacao === "lider" ? pinturaDe(r.lider.partido, r.margem) : pinturaDe("", 0);
 }
 
 /* Texto curto do estado, usado na lista e no rótulo para leitor de tela. */
@@ -74,7 +79,7 @@ function legendaDoMapa(d) {
 function construirMapa() {
   const [largura, altura] = MAPA_TAMANHO;
   const svg = criarSvg("svg", { viewBox: `0 0 ${largura} ${altura}`, role: "img", "aria-label": "Mapa do Brasil com o líder de cada estado. A lista dos estados está logo abaixo." });
-  const caminhos = criarSvg("g"), rotulos = criarSvg("g"), porUf = new Map();
+  const caminhos = criarSvg("g"), rotulos = criarSvg("g"), ondas = criarSvg("g", { class: "ondas", "aria-hidden": "true" }), porUf = new Map();
   for (const [uf, forma] of Object.entries(MAPA_UFS)) {
     const caminho = criarSvg("path", { d: forma.d, "data-uf": uf });
     caminho.addEventListener("pointermove", (e) => mostrarDicaEm(dicaDaUf(uf, mapaDados && mapaDados.ufs[uf]), e.clientX, e.clientY));
@@ -84,13 +89,14 @@ function construirMapa() {
     porUf.set(uf, caminho);
     if (forma.l >= 90) rotulos.append(criarSvg("text", { x: forma.c[0], y: forma.c[1] + 7, "text-anchor": "middle" }, uf.toUpperCase()));
   }
-  svg.append(caminhos, rotulos);   // os rótulos ficam por cima de qualquer contorno
+  svg.append(caminhos, rotulos, ondas);   // os rótulos e as ondas ficam por cima de qualquer contorno
   $("mapa-svg").replaceChildren(svg);
-  mapaSvg = { svg, porUf };
+  mapaSvg = { svg, porUf, ondas };
 }
 
 /* Repinta cada estado. O estado que mudou de cor ou de força pisca de leve: dá para ver a apuração andando. */
 function pintarUfs(d) {
+  if (mapaCongelado) return;
   for (const [uf, caminho] of mapaSvg.porUf) {
     const estilo = pintura(d.ufs[uf]);
     const antes = caminho.getAttribute("style");
@@ -102,6 +108,7 @@ function pintarUfs(d) {
       caminho.classList.add("mudou");
     }
   }
+  avisar(aoPintarUfs, d);
 }
 
 function pintarMapa(d) {

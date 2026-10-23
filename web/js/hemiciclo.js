@@ -116,8 +116,8 @@ function pintarMaisVotados(d) {
     : carregando ? `Ranking parcial: dados de ${d.ufs_com_dados} de ${d.ufs_total} estados até agora.` : "O TSE ainda não publicou votos.";
   $("maisvotados-lista").replaceChildren(...d.candidatos.map((c) => criar("li", {},
     criar("span", { class: "pos" }, c.posicao),
-    criar("div", {}, criar("div", { class: "nome" }, c.nome),
-      criar("div", { class: "meta" }, `${c.partido} · ${UFS[c.uf]}`, ...(c.eleito ? [" · ", criar("span", { class: "eleito" }, "✓ eleito")] : []))),
+    criar("div", { class: "com-foto" }, fotoDoCandidato(c), criar("div", {}, criar("div", { class: "nome" }, c.nome),
+      criar("div", { class: "meta" }, `${c.partido} · ${UFS[c.uf]}`, ...(c.eleito ? [" · ", criar("span", { class: "eleito" }, "✓ eleito")] : [])))),
     criar("span", { class: "num" }, `${inteiro(c.votos)} votos`))));
 }
 

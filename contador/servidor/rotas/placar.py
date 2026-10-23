@@ -29,7 +29,7 @@ def resultado(consulta):
     if dados is None:
         return erro_do_tse(status, "O TSE ainda não publicou o resultado desta seleção (ou o cargo não é disputado nesta UF).")
     estado.HISTORICO.registrar((ambiente, cargo, uf, turno, municipio), dados)  # só memória e disco: o histórico nunca consulta o TSE
-    corpo = resumir(dados, top)
+    corpo = resumir(dados, top, lambda sqcand: catalogo.url_foto(ambiente, cargo, uf, turno, sqcand))
     corpo["ambiente"] = ambiente
     corpo["municipio"] = {"codigo": cidade["codigo"], "nome": cidade["nome"]} if cidade else None
     corpo["idade_s"] = round(time.time() - verificado_em)

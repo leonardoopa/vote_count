@@ -51,6 +51,15 @@ def montar_url(ambiente, cargo, uf, turno, eleicao=None, municipio=None):
     return f"{AMBIENTES[ambiente]['base']}/{codigo}/dados/{uf}/{arquivo}"
 
 
+def url_foto(ambiente, cargo, uf, turno, sqcand, eleicao=None):
+    """Foto (JPEG) do candidato, que o TSE guarda ao lado do resultado. None se `sqcand` não é um número."""
+    sqcand = str(sqcand or "")
+    if not sqcand.isascii() or not sqcand.isdigit():
+        return None
+    codigo = codigo_eleicao(ambiente, cargo, turno, eleicao)
+    return f"{AMBIENTES[ambiente]['base']}/{codigo}/fotos/{uf}/{sqcand}.jpeg"
+
+
 def url_municipios(ambiente, cargo, turno, eleicao=None):
     """Lista de municípios (por UF) da eleição: a mesma para todos os cargos dela."""
     codigo = codigo_eleicao(ambiente, cargo, turno, eleicao)

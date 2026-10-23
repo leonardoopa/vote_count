@@ -42,4 +42,9 @@ def mais_votados(consulta):
     if cargo not in FAMILIAS:
         return 400, {"erro": "só deputado federal, estadual ou distrital têm ranking de mais votados"}
     status, corpo = painel_de_deputados(consulta, FAMILIAS[cargo], deputados.mais_votados)
-    return status, {**corpo, "cargo": cargo} if status == 200 else corpo
+    if status != 200:
+        return status, corpo
+    for candidato in corpo["candidatos"]:  # o `sqcand` só serve para achar a foto; a página recebe o endereço pronto
+        uf = candidato["uf"]
+        candidato["foto"] = catalogo.url_foto(corpo["ambiente"], cargo_da_familia(FAMILIAS[cargo], uf), uf, 1, candidato.pop("sqcand"))
+    return status, {**corpo, "cargo": cargo}

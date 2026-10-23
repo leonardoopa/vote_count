@@ -51,6 +51,12 @@ class Pagina(unittest.TestCase):
             self.assertNotRegex(texto, r"url\(\s*['\"]?(?:https?:)?//")
             self.assertNotRegex(texto, r"\b(?:src|action)=[\"'](?:https?:)?//")
 
+    def test_foto_do_candidato_so_vem_de_https_e_nao_manda_referer(self):
+        # A foto é baixada pelo navegador direto do TSE: só https, sem Referer, preguiçosa, e some se não carregar.
+        corpo = re.search(r"function fotoDoCandidato\(c\) \{(.*?)\n\}", script(), re.S).group(1)
+        for trecho in ('startsWith("https://")', 'referrerpolicy: "no-referrer"', 'loading: "lazy"', 'addEventListener("error"'):
+            self.assertIn(trecho, corpo)
+
     def test_scripts_nunca_montam_html_de_texto(self):
         """Texto do anúncio, nomes e endereços entram por textContent e atributos: nada de montar HTML na mão."""
         for nome in ARQUIVOS_JS:

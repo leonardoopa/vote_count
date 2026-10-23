@@ -1,4 +1,5 @@
 """Testes de `contador/servidor/rotas/placar.py` e da lista de cidades da UF (`rotas/municipios.py`)."""
+import copy
 import unittest
 from unittest import mock
 
@@ -85,6 +86,13 @@ class Resultado(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(corpo["candidatos"]), 1)
         self.assertNotIn("aviso", corpo)
+
+    def test_candidato_vem_com_o_endereco_da_foto_no_tse(self):
+        dados = copy.deepcopy(DADOS)
+        dados["carg"][0]["agr"][0]["par"][0]["cand"][1]["sqcand"] = "250002541303"
+        with mock.patch.object(estado.CACHE, "obter", return_value=(dados, 200, 0)):
+            _, corpo = rotas.resultado({"cargo": ["governador"], "uf": ["sp"], "turno": ["2"], "top": ["2"]})
+        self.assertEqual([c["foto"] for c in corpo["candidatos"]], ["https://resultados.tse.jus.br/oficial/ele2026/6260/fotos/sp/250002541303.jpeg", None])
 
     def test_aviso_quando_tse_falha_com_dado_antigo(self):
         with mock.patch.object(estado.CACHE, "obter", return_value=(DADOS, 500, 0)):

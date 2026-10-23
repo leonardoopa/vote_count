@@ -6,6 +6,7 @@ from unittest import mock
 from contador.demo import tse_falso
 from contador.recursos import deputados
 from contador.servidor import estado, respostas, rotas
+from contador.servidor.rotas import deputados as rota_deputados
 from contador.tse import catalogo, cliente
 from contador.varredor import Varredor
 
@@ -67,6 +68,14 @@ class Rotas(unittest.TestCase):
         self.assertEqual((status, corpo["cargo"], len(corpo["candidatos"])), (200, "deputado-distrital", deputados.TOP_DO_PAIS))
         self.assertEqual([c["posicao"] for c in corpo["candidatos"]], list(range(1, 21)))
         self.assertGreaterEqual(corpo["candidatos"][0]["votos"], corpo["candidatos"][-1]["votos"])
+
+    def test_mais_votados_traz_o_endereco_da_foto_e_nao_o_sqcand(self):
+        corpo = {"ambiente": "oficial", "candidatos": [{"posicao": 1, "uf": "sp", "sqcand": "250002546640"}, {"posicao": 2, "uf": "df", "sqcand": None}]}
+        with mock.patch.object(rota_deputados, "painel_de_deputados", return_value=(200, corpo)):
+            status, resposta = rotas.mais_votados({"cargo": ["deputado-estadual"]})
+        self.assertEqual(status, 200)
+        self.assertEqual([c["foto"] for c in resposta["candidatos"]], ["https://resultados.tse.jus.br/oficial/ele2026/6259/fotos/sp/250002546640.jpeg", None])
+        self.assertTrue(all("sqcand" not in c for c in resposta["candidatos"]))
 
     def test_federal_e_estadual_sao_grupos_diferentes(self):
         rotas.mais_votados({"cargo": ["deputado-federal"], "ambiente": ["simulado"]})

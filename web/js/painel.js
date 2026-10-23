@@ -115,7 +115,7 @@ function linha(c, lider, comDica = true) {
   pos.textContent = c.posicao;
 
   const quem = document.createElement("div");
-  quem.className = "quem";
+  quem.className = "quem com-foto";
   const nome = document.createElement("div");
   nome.className = "nome";
   nome.textContent = c.nome;
@@ -129,7 +129,7 @@ function linha(c, lider, comDica = true) {
     sit.textContent = (c.eleito ? "✓ " : "") + c.situacao;
     meta.append(sit);
   }
-  quem.append(nome, meta);
+  quem.append(fotoDoCandidato(c), criar("div", {}, nome, meta));
 
   const trilho = document.createElement("div");
   trilho.className = "trilho";

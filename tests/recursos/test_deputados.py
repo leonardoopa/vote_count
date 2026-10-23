@@ -4,8 +4,8 @@ import unittest
 from contador.recursos import deputados
 
 
-def cand(numero, nome, votos, situacao=""):
-    return {"n": numero, "nm": nome.upper(), "nmu": nome.upper(), "vap": str(votos), "pvap": "0,00", "st": situacao}
+def cand(numero, nome, votos, situacao="", sqcand=None):
+    return {"n": numero, "nm": nome.upper(), "nmu": nome.upper(), "vap": str(votos), "pvap": "0,00", "st": situacao, **({"sqcand": sqcand} if sqcand else {})}
 
 
 def arquivo(agrupamentos, vagas=3, final=False, secoes=(100, 50)):
@@ -47,7 +47,7 @@ class ResumirArquivo(unittest.TestCase):
     def test_mais_votados_do_maior_para_o_menor_com_empate_pelo_numero(self):
         topo = deputados.resumir_arquivo(SP, "sp")["mais_votados"]
         self.assertEqual([c["nome"] for c in topo], ["EDU", "DANI", "ANA", "CAIO", "BIA"])  # 12000 empatado: número maior primeiro
-        self.assertEqual(topo[1], {"nome": "DANI", "partido": "PL", "numero": "2211", "votos": 12000, "eleito": True, "uf": "sp"})
+        self.assertEqual(topo[1], {"nome": "DANI", "partido": "PL", "numero": "2211", "votos": 12000, "eleito": True, "uf": "sp", "sqcand": None})
 
     def test_so_marca_eleito_quem_o_tse_marca(self):
         for texto, esperado in (("Eleito por QP", True), ("Eleito por média", True), ("Eleito", True), ("Suplente", False),

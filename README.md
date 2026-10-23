@@ -189,7 +189,7 @@ O atraso que o contador soma é de até uns 15 segundos. O resto depende de quan
   "votos": { "total": 30000000, "brancos": 900000, "pct_brancos": 3.0, "nulos": 1500000, "pct_nulos": 5.0 },
   "total_candidatos": 12,
   "candidatos": [
-    { "posicao": 1, "numero": "13", "nome": "NOME", "partido": "PT", "votos": 12000000, "percentual": 41.2, "eleito": false, "situacao": "" }
+    { "posicao": 1, "numero": "13", "nome": "NOME", "partido": "PT", "votos": 12000000, "percentual": 41.2, "eleito": false, "situacao": "", "foto": "https://resultados.tse.jus.br/oficial/ele2026/6257/fotos/br/280002551544.jpeg" }
   ],
   "ambiente": "oficial",
   "municipio": null,
@@ -197,7 +197,7 @@ O atraso que o contador soma é de até uns 15 segundos. O resto depende de quan
 }
 ```
 
-`municipio` vem `null` para a UF inteira, ou `{"codigo": "62910", "nome": "Campinas"}` quando a consulta é de uma cidade. Os números acima são só de exemplo e o JSON foi resumido (a resposta real traz também abstenção, horário de geração do arquivo e outros campos). Códigos de resposta: `200` com dados, `400` seleção inválida, `404` o TSE ainda não publicou, `503` o TSE não respondeu. Se o TSE falhar mas houver um placar antigo, ele é devolvido com o campo `aviso`. `GET /saude` responde `ok` (usado pelo healthcheck do Docker).
+`foto` é o endereço da foto do candidato no TSE (`null` quando o arquivo não traz o `sqcand`, como no ambiente simulado): a página baixa a imagem direto de lá, sem passar pelo servidor, e mostra as iniciais se ela não carregar. O ranking dos mais votados (`/api/maisvotados`) traz o mesmo campo. `municipio` vem `null` para a UF inteira, ou `{"codigo": "62910", "nome": "Campinas"}` quando a consulta é de uma cidade. Os números acima são só de exemplo e o JSON foi resumido (a resposta real traz também abstenção, horário de geração do arquivo e outros campos). Códigos de resposta: `200` com dados, `400` seleção inválida, `404` o TSE ainda não publicou, `503` o TSE não respondeu. Se o TSE falhar mas houver um placar antigo, ele é devolvido com o campo `aviso`. `GET /saude` responde `ok` (usado pelo healthcheck do Docker).
 
 ### Histórico e atualizações
 
@@ -336,7 +336,7 @@ Ideias soltas, fora do Roadmap original: alerta por push de verdade (hoje só co
 ### Regras para quem implementar
 
 - Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor. A exceção são os recursos que precisam de dezenas ou centenas de arquivos (hemiciclo da Câmara, mais votados, mapa por município e exterior por país): quem busca é só o varredor, com teto de `BUSCAS_EXTRAS_POR_SEGUNDO` no total (padrão 2, contra os 100 do TSE) e só enquanto alguém olha.
-- Manter a página sem dependência de CDN nem etapa de build (os arquivos de `web/` saem do servidor como estão), e o tema claro e escuro. Cada recurso novo da página ganha o próprio arquivo em `web/js/` e entra em `web/index.html`; os scripts são clássicos e compartilham o escopo global, então a ordem das tags importa (`base.js` primeiro, `iniciar.js` por último).
+- Manter a página sem dependência de CDN nem etapa de build (os arquivos de `web/` saem do servidor como estão), e o tema claro e escuro. As únicas imagens de fora são a foto do candidato (do TSE) e o banner do anúncio, baixadas pelo navegador do visitante, nunca pelo servidor. Cada recurso novo da página ganha o próprio arquivo em `web/js/` e entra em `web/index.html`; os scripts são clássicos e compartilham o escopo global, então a ordem das tags importa (`base.js` primeiro, `iniciar.js` por último).
 - Cada item novo ganha teste em `tests/`, no mesmo caminho do módulo (`contador/recursos/mapa.py` → `tests/recursos/test_mapa.py`).
 - Atualizar a seção [API](#api) quando criar endpoint.
 

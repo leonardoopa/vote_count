@@ -2,8 +2,11 @@
 from contador.tse import leitura
 
 
-def resumir(dados, top):
-    """Placar de um arquivo do TSE: seções, eleitores, votos e os `top` primeiros candidatos."""
+def resumir(dados, top, foto=None):
+    """Placar de um arquivo do TSE: seções, eleitores, votos e os `top` primeiros candidatos.
+
+    Com `foto` (função do `sqcand` do candidato para o endereço da foto), cada candidato ganha o campo `foto`.
+    """
     secoes, eleitores, votos = dados["s"], dados["e"], dados["v"]
     todos = leitura.candidatos(dados)
     return {
@@ -30,17 +33,21 @@ def resumir(dados, top):
             "pct_nulos": leitura.decimal(votos["ptvn"]),
         },
         "total_candidatos": len(todos),
-        "candidatos": [
-            {
-                "posicao": posicao,
-                "numero": cand["n"],
-                "nome": cand.get("nmu") or cand["nm"],
-                "partido": cand["partido"],
-                "votos": leitura.inteiro(cand["vap"]),
-                "percentual": leitura.decimal(cand["pvap"]),
-                "eleito": cand.get("st", "").lower().startswith("eleito"),
-                "situacao": leitura.situacao(cand),
-            }
-            for posicao, cand in enumerate(todos[:top], start=1)
-        ],
+        "candidatos": [_candidato(posicao, cand, foto) for posicao, cand in enumerate(todos[:top], start=1)],
     }
+
+
+def _candidato(posicao, cand, foto):
+    resumo = {
+        "posicao": posicao,
+        "numero": cand["n"],
+        "nome": cand.get("nmu") or cand["nm"],
+        "partido": cand["partido"],
+        "votos": leitura.inteiro(cand["vap"]),
+        "percentual": leitura.decimal(cand["pvap"]),
+        "eleito": cand.get("st", "").lower().startswith("eleito"),
+        "situacao": leitura.situacao(cand),
+    }
+    if foto:
+        resumo["foto"] = foto(cand.get("sqcand"))
+    return resumo

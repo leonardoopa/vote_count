@@ -4,6 +4,25 @@ import unittest
 from contador.tse import catalogo
 
 
+class UrlFoto(unittest.TestCase):
+    def test_presidente(self):
+        self.assertEqual(
+            catalogo.url_foto("oficial", "presidente", "br", 1, "280002551544"),
+            "https://resultados.tse.jus.br/oficial/ele2026/6257/fotos/br/280002551544.jpeg",
+        )
+
+    def test_cargo_estadual_no_segundo_turno_fica_na_pasta_da_uf(self):
+        self.assertEqual(
+            catalogo.url_foto("oficial", "governador", "sp", 2, "250002541303"),
+            "https://resultados.tse.jus.br/oficial/ele2026/6260/fotos/sp/250002541303.jpeg",
+        )
+
+    def test_so_aceita_numero_de_candidato(self):
+        for sqcand in (None, "", "12 3", "../x", "1.jpeg?x=1", "١٢٣"):
+            with self.subTest(sqcand=sqcand):
+                self.assertIsNone(catalogo.url_foto("oficial", "presidente", "br", 1, sqcand))
+
+
 class MontarUrl(unittest.TestCase):
     def test_presidente_oficial(self):
         self.assertEqual(

@@ -39,7 +39,7 @@ def resumir_arquivo(dados, uf):
                     partidos[partido["sg"]] = partidos.get(partido["sg"], 0) + 1
                     cadeiras += 1
                 # (votos, número como desempate estável) vem antes dos dados para o heap comparar só números
-                melhores.append((votos, cand["n"], cand.get("nmu") or cand["nm"], partido["sg"], escolhido))
+                melhores.append((votos, cand["n"], cand.get("nmu") or cand["nm"], partido["sg"], escolhido, cand.get("sqcand")))
         blocos.append({
             "nome": agrupamento.get("com") or agrupamento.get("nm") or "/".join(siglas),
             "federacao": agrupamento.get("tp") == "f", "partidos": siglas, "cadeiras": cadeiras,
@@ -52,8 +52,8 @@ def resumir_arquivo(dados, uf):
         "partidos": partidos,
         "blocos": blocos,
         "mais_votados": [
-            {"nome": nome, "partido": partido, "numero": numero, "votos": votos, "eleito": escolhido, "uf": uf}
-            for votos, numero, nome, partido, escolhido in heapq.nlargest(TOP_POR_UF, melhores, key=lambda c: (c[0], c[1]))
+            {"nome": nome, "partido": partido, "numero": numero, "votos": votos, "eleito": escolhido, "uf": uf, "sqcand": sqcand}
+            for votos, numero, nome, partido, escolhido, sqcand in heapq.nlargest(TOP_POR_UF, melhores, key=lambda c: (c[0], c[1]))
         ],
         "secoes": {"total": leitura.inteiro(secoes["ts"]), "apuradas": leitura.inteiro(secoes["st"])},
         "final": dados.get("tf") == "s",

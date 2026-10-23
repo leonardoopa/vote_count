@@ -42,6 +42,19 @@ const criarSvg = (tag, props = {}, ...filhos) => {
   return el;
 };
 const inteiro = (n) => n.toLocaleString("pt-BR");
+
+/* Foto do candidato: um círculo com as iniciais e, por cima, a foto que o TSE publica (a página baixa direto de lá).
+   Sem foto, ou se ela não carregar, ficam as iniciais. */
+function fotoDoCandidato(c) {
+  const iniciais = c.nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => [...p][0]).join("").toUpperCase();
+  const el = criar("span", { class: "foto", "aria-hidden": "true" }, iniciais);
+  if (typeof c.foto === "string" && c.foto.startsWith("https://")) {
+    const img = criar("img", { src: c.foto, alt: "", loading: "lazy", decoding: "async", referrerpolicy: "no-referrer", width: "40", height: "40" });
+    img.addEventListener("error", () => img.remove());
+    el.append(img);
+  }
+  return el;
+}
 const pct = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
 
 const params = new URLSearchParams(location.search);

@@ -765,3 +765,79 @@ html:not(.embed) .resumo-principal .valor { font-size: 1.75rem; }
 }
 html:not(.embed) .indicador .valor { white-space: nowrap; font-size: clamp(1rem, 1.4vw, 1.25rem); }   /* o número nunca quebra no meio, nem na coluna estreita */
 @media (max-width: 640px) { html:not(.embed) .indicador .valor { font-size: 0.9375rem; } }
+
+/* Anúncio na tela única: o texto vem ao lado do rótulo e a imagem cabe numa faixa baixa, para o mapa não perder espaço */
+html:not(.embed) .anuncio:not(.com-imagem) { flex-direction: row; align-items: center; gap: 10px; }
+html:not(.embed) .anuncio-rotulo { flex: none; font-size: 0.625rem; }
+html:not(.embed) .anuncio-imagem { width: auto; max-width: 100%; }   /* o banner mantém a proporção, sem faixas cinza dos lados */
+@media (max-width: 640px) {
+  html:not(.embed) .anuncio-imagem { max-height: 44px; }
+  html:not(.embed) .anuncio.com-imagem .anuncio-texto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }   /* a imagem já fala; o texto fica para leitor de tela */
+  html:not(.embed) .anuncio.com-imagem { position: relative; }
+}
+
+/* ===== Mais espaço para o mapa ===== */
+html:not(.embed) .trilha:not(:has(button)) { display: none; }   /* só "Brasil", sem passo para voltar: não ocupa linha */
+html:not(.embed) .cabecalho > .filtros { margin: 0; flex: 0 1 auto; }
+html:not(.embed) .duelo { padding: 6px 12px; }
+html:not(.embed) .duelo-barra { margin: 6px 0 0; height: 10px; }
+
+@media (max-width: 1179.98px) {
+  html:not(.embed) .cabecalho > .filtros { order: 5; flex: 1 1 100%; }
+}
+
+/* tela larga: o topo cabe em duas linhas (marca, cargos e botões; filtros e estado da apuração) e o mapa leva o resto da altura,
+   com os modos e a contagem em cima, a legenda e o "Rever a noite" embaixo, na mesma faixa do cartão */
+@media (min-width: 1180px) {
+  html:not(.embed) .duelo-texto { display: grid; grid-template-columns: auto auto; justify-content: start; align-items: baseline; column-gap: 10px; }
+  html:not(.embed) .duelo-lado.direita .duelo-texto { justify-content: end; }
+  html:not(.embed) .duelo-texto > .duelo-votos { align-self: end; }
+  html:not(.embed) .cabecalho { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+  html:not(.embed) .cabecalho::after { content: ""; flex: 1 0 100%; order: 4; height: 0; }
+  html:not(.embed) .cabecalho-direita { display: contents; }
+  html:not(.embed) h1 { font-size: 1.25rem; }
+  html:not(.embed) .cabecalho .sub { display: none; }
+  html:not(.embed) .marca { order: 1; }
+  html:not(.embed) .cabecalho .abas { order: 2; }
+  html:not(.embed) :is(#abrir-busca, #abrir-comparar, #abrir-exterior, #abrir-compartilhar, #tela-cheia) { order: 3; }
+  html:not(.embed) #abrir-busca { margin-left: auto; }
+  html:not(.embed) .cabecalho > .filtros { order: 5; }
+  html:not(.embed) #selos { order: 6; margin-left: auto; }
+  html:not(.embed) #ao-vivo { order: 7; }
+  html:not(.embed) #alertas { order: 8; }
+  html:not(.embed) .duelo-lado.lider .duelo-foto .foto { width: 60px; height: 60px; }
+  html:not(.embed) .duelo-lado .duelo-foto .foto { width: 48px; height: 48px; }
+
+  html:not(.embed) #mapa:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr); column-gap: 8px; padding: 8px 10px; }
+  html:not(.embed) #mapa .lista-titulo { grid-column: 2; grid-row: 1; margin: 0; align-self: center; }
+  html:not(.embed) #mapa .lista-titulo h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }   /* o título fica para leitor de tela */
+  html:not(.embed) #mapa-modo { grid-column: 1; grid-row: 1; margin: 0; }
+  html:not(.embed) #mapa-nota { grid-column: 1 / -1; grid-row: 2; }
+  html:not(.embed) #mapa-corpo:not([hidden]) { grid-column: 1 / -1; grid-row: 3; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) auto; column-gap: 12px; }
+  html:not(.embed) #mapa-corpo > .mapa-svg { grid-column: 1 / -1; grid-row: 1; align-self: stretch; }
+  html:not(.embed) #mapa-corpo > #mapa-legenda { grid-column: 1; grid-row: 2; margin: 4px 0 0; align-self: center; }
+  html:not(.embed) #mapa-corpo > .replay-mapa { grid-column: 2; grid-row: 2; margin: 4px 0 0; }
+  html:not(.embed) #mapa-corpo > :is(#mapa-explica, #mapa-brasil, details.evo-tabela) { grid-column: 1 / -1; grid-row: 3; }
+  html:not(.embed) #mapa-explica { display: none; }
+}
+
+/* ===== Celular e tablet: o mapa vira a tela inteira, de ponta a ponta, sem cartão em volta ===== */
+@media (max-width: 1179.98px) {
+  html:not(.embed) .pagina > .painel { margin: 0 -12px; padding: 0 12px; }
+  html:not(.embed) .painel :is(#mapa, #mapa-mun, #mundo):not([hidden]) { margin: 0 -12px; padding: 0; border: 0; border-radius: 0; background: none; }
+  html:not(.embed) .painel :is(#mapa, #mapa-mun, #mundo) > :not(#mapa-corpo, #mapa-mun-corpo, #mundo-corpo),
+  html:not(.embed) .painel :is(#mapa-corpo, #mapa-mun-corpo, #mundo-corpo) > :not(.mapa-svg) { margin-left: 12px; margin-right: 12px; }
+  html:not(.embed) .replay-mapa .botao { border-radius: 999px; }
+
+  /* mapa do Brasil: modos, legenda, desenho e, na última linha, "Rever a noite" e a contagem de municípios */
+  html:not(.embed) #mapa:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto auto minmax(0, 1fr) auto; row-gap: 2px; }
+  html:not(.embed) #mapa-corpo:not([hidden]) { display: contents; }
+  html:not(.embed) #mapa-modo { grid-column: 1 / -1; grid-row: 1; }
+  html:not(.embed) #mapa-nota { grid-column: 1 / -1; grid-row: 2; }
+  html:not(.embed) #mapa-legenda { grid-column: 1 / -1; grid-row: 3; }
+  html:not(.embed) #mapa .mapa-svg { grid-column: 1 / -1; grid-row: 4; min-height: 0; }
+  html:not(.embed) #mapa .replay-mapa { grid-column: 1; grid-row: 5; margin-top: 2px; margin-bottom: 6px; }
+  html:not(.embed) #mapa .lista-titulo { grid-column: 2; grid-row: 5; margin: 0 12px 0 0; align-self: center; }
+  html:not(.embed) #mapa .lista-titulo h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  html:not(.embed) #mapa-corpo > :is(#mapa-explica, #mapa-brasil, details.evo-tabela) { grid-column: 1 / -1; grid-row: 6; }
+}

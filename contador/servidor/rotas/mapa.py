@@ -1,5 +1,6 @@
 """Rotas que partem do resumo por UF: mapa do Brasil, regiões, disputas apertadas e Senado."""
 from contador.recursos import mapa
+from contador.servidor import estado
 from contador.servidor.respostas import resumo_do_cargo
 from contador.servidor.validacao import validar_mapa
 
@@ -35,3 +36,12 @@ def disputas_apertadas(consulta):
 
 def senado_em_disputa(consulta):
     return derivado({**consulta, "cargo": ["senador"]}, ("senador",), mapa.senado)
+
+
+def mapa_historico(consulta):
+    """Fotos do mapa por UF ao longo da apuração (/api/mapa-historico). Só lê o que já foi guardado: nunca consulta o TSE."""
+    try:
+        cargo, ambiente, turno = validar_mapa(consulta)
+    except ValueError as erro:
+        return 400, {"erro": str(erro)}
+    return 200, estado.HISTORICO_DO_MAPA.consultar((ambiente, cargo, turno))

@@ -1,6 +1,11 @@
 /* Mapa do Brasil, painel por região e disputas mais apertadas. */
-const INTERVALO_MAPA = 20000;
+const INTERVALO_MAPA = 10000;   // o TSE guarda cada estado por 20 s no servidor: a página só relê o que já está pronto
 const DISPUTAS_INICIAIS = 10;
+let mapaSvg = null;   // o desenho dos estados é montado uma vez por seleção e só repintado a cada rodada
+let mapaCongelado = false;      // true enquanto o replay (mapa-ao-vivo.js) mostra uma foto antiga: a rodada não repinta
+const aoConstruirMapa = [];      // (mapaSvg) depois que o desenho dos estados foi montado; mapa-brasil-rotulos.js põe rótulos e etiquetas aqui
+const MAPA_VISTA = [1120, MAPA_TAMANHO[1]];   // o desenho dos estados tem 1000 de largura; o resto é a coluna das etiquetas dos estados pequenos
+const aoPintarUfs = [];         // (dados) depois que os estados foram repintados; mapa-ao-vivo.js solta as ondas aqui
 let mapaDados = null, regioesDados = null, mapaMarca = "", mapaSeq = 0, mapaTimer = 0, disputasTodas = false, disputasDados = null;
 const temMapa = () => estado.cargo === "presidente" || estado.cargo === "governador";
 const temRegioes = () => estado.cargo === "presidente";
@@ -10,10 +15,13 @@ const pp = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumF
 const nomeDoCandidato = (c) => `${c.nome} (${c.partido})`;
 
 /* Cor do estado: o partido do líder; quanto maior a margem, mais forte (até 20 pontos). Sem líder, cinza. */
+function pinturaDe(partido, margem) {
+  if (!partido) return "fill:var(--muted);fill-opacity:0.3";
+  const forca = 0.35 + 0.65 * Math.min(margem, 20) / 20;
+  return `fill:${corDoPartido(partido)};fill-opacity:${forca.toFixed(2)}`;
+}
 function pintura(r) {
-  if (!r || r.situacao !== "lider") return "fill:var(--muted);fill-opacity:0.3";
-  const forca = 0.35 + 0.65 * Math.min(r.margem, 20) / 20;
-  return `fill:${corDoPartido(r.lider.partido)};fill-opacity:${forca.toFixed(2)}`;
+  return r && r.situacao === "lider" ? pinturaDe(r.lider.partido, r.margem) : pinturaDe("", 0);
 }
 
 /* Texto curto do estado, usado na lista e no rótulo para leitor de tela. */
@@ -27,6 +35,9 @@ function resumoDaUf(r) {
 }
 
 function dicaDaUf(uf, r) {
+  if (r && r.situacao === "lider") {
+    return cartaoDoLugar({ selo: uf.toUpperCase(), titulo: UFS[uf], subtitulo: `${pct(r.secoes.percentual)} das seções`, candidatos: [r.lider, r.segundo].filter(Boolean), cor: corDoPartido(r.lider.partido) });
+  }
   const nos = [criar("strong", {}, `${UFS[uf]} (${uf.toUpperCase()})`), criar("span", {}, resumoDaUf(r))];
   if (r && r.situacao === "lider") {
     nos.push(criar("span", {}, ` · ${inteiro(r.margem_votos)} votos de vantagem · ${pct(r.secoes.percentual)} das seções`));
@@ -37,10 +48,9 @@ function dicaDaUf(uf, r) {
 }
 
 function selecionarUfDoMapa(uf) {
+  if (uf !== "br" && temMapa()) { irParaTela("centro"); entrarNaUf(uf); return; }   // palco.js: zoom animado até o estado (em celular, na tela do mapa)
   if (uf === estado.uf) return;
-  trocou("uf", uf);
-  const reduzir = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  $("filtros").scrollIntoView({ behavior: reduzir ? "auto" : "smooth", block: "start" });
+  trocou("uf", uf);   // o duelo, no alto de todas as telas, já mostra o estado escolhido
 }
 
 function destacarUf() {
@@ -68,6 +78,44 @@ function legendaDoMapa(d) {
   return itens;
 }
 
+/* Monta o desenho uma vez. As rodadas seguintes só trocam a cor de cada estado (com transição), então o mapa
+   não pisca e quem está com zoom num estado continua onde estava. */
+function construirMapa() {
+  const [largura, altura] = MAPA_VISTA;
+  const svg = criarSvg("svg", { viewBox: `0 0 ${largura} ${altura}`, role: "img", "aria-label": "Mapa do Brasil com o líder de cada estado. A lista dos estados está logo abaixo." });
+  const caminhos = criarSvg("g"), rotulos = criarSvg("g"), ondas = criarSvg("g", { class: "ondas", "aria-hidden": "true" }), porUf = new Map();
+  for (const [uf, forma] of Object.entries(MAPA_UFS)) {
+    const caminho = criarSvg("path", { d: forma.d, "data-uf": uf });
+    caminho.addEventListener("pointermove", (e) => mostrarDicaEm(dicaDaUf(uf, mapaDados && mapaDados.ufs[uf]), e.clientX, e.clientY));
+    caminho.addEventListener("pointerleave", () => { dica.hidden = true; });
+    caminho.addEventListener("click", () => { dica.hidden = true; selecionarUfDoMapa(uf); });
+    caminhos.append(caminho);
+    porUf.set(uf, caminho);
+  }
+  svg.append(caminhos, rotulos, ondas);   // os rótulos e as ondas ficam por cima de qualquer contorno
+  $("mapa-svg").style.setProperty("--proporcao", String(largura / altura));   // o CSS dimensiona o mapa pela proporção, para caber na tela sem barras
+  $("mapa-svg").replaceChildren(svg);
+  mapaSvg = { svg, porUf, ondas, rotulos };
+  avisar(aoConstruirMapa, mapaSvg);
+}
+
+/* Repinta cada estado. O estado que mudou de cor ou de força pisca de leve: dá para ver a apuração andando. */
+function pintarUfs(d) {
+  if (mapaCongelado) return;
+  for (const [uf, caminho] of mapaSvg.porUf) {
+    const estilo = pintura(d.ufs[uf]);
+    const antes = caminho.getAttribute("style");
+    if (antes === estilo) continue;
+    caminho.setAttribute("style", estilo);
+    if (antes !== null) {
+      caminho.classList.remove("mudou");
+      void caminho.getBoundingClientRect();   // reinicia a animação se ele mudar duas vezes seguidas
+      caminho.classList.add("mudou");
+    }
+  }
+  avisar(aoPintarUfs, d);
+}
+
 function pintarMapa(d) {
   mapaDados = d;
   $("mapa").hidden = false;
@@ -79,19 +127,8 @@ function pintarMapa(d) {
   $("mapa-explica").textContent = `A cor é a do partido de quem lidera cada estado${estado.cargo === "presidente" ? " para presidente" : " para governador"}; quanto mais forte, maior a vantagem (até 20 pontos). Clique num estado para ver o placar dele.`;
   $("mapa-legenda").replaceChildren(...legendaDoMapa(d));
 
-  const [largura, altura] = MAPA_TAMANHO;
-  const svg = criarSvg("svg", { viewBox: `0 0 ${largura} ${altura}`, role: "img", "aria-label": "Mapa do Brasil com o líder de cada estado. A lista dos estados está logo abaixo." });
-  const caminhos = criarSvg("g"), rotulos = criarSvg("g");
-  for (const [uf, forma] of Object.entries(MAPA_UFS)) {
-    const caminho = criarSvg("path", { d: forma.d, style: pintura(d.ufs[uf]), "data-uf": uf });
-    caminho.addEventListener("pointermove", (e) => mostrarDicaEm(dicaDaUf(uf, d.ufs[uf]), e.clientX, e.clientY));
-    caminho.addEventListener("pointerleave", () => { dica.hidden = true; });
-    caminho.addEventListener("click", () => { dica.hidden = true; selecionarUfDoMapa(uf); });
-    caminhos.append(caminho);
-    if (forma.l >= 90) rotulos.append(criarSvg("text", { x: forma.c[0], y: forma.c[1] + 7, "text-anchor": "middle" }, uf.toUpperCase()));
-  }
-  svg.append(caminhos, rotulos);   // os rótulos ficam por cima de qualquer contorno
-  $("mapa-svg").replaceChildren(svg);
+  if (!mapaSvg) construirMapa();
+  pintarUfs(d);
 
   const nomes = Object.keys(UFS).sort((a, b) => UFS[a].localeCompare(UFS[b], "pt-BR"));
   const linhas = nomes.map((uf) => {
@@ -194,7 +231,7 @@ aoMudarSelecao.push(() => {
   if (marca === mapaMarca) { destacarUf(); return; }   // só mudou o estado ou a cidade: o mapa é o mesmo
   mapaMarca = marca;
   disputasTodas = false;
-  disputasDados = mapaDados = regioesDados = null;
+  disputasDados = mapaDados = regioesDados = mapaSvg = null;
   $("mapa").hidden = !temMapa();
   $("mapa-corpo").hidden = true;
   $("mapa-nota").hidden = false;

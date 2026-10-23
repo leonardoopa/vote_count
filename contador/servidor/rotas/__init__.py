@@ -6,7 +6,7 @@ from contador.servidor.rotas.compartilhamento import cartao_do_placar, icone, ma
 from contador.servidor.rotas.deputados import camara_dos_deputados, mais_votados
 from contador.servidor.rotas.exterior import mundo
 from contador.servidor.rotas.historico import atualizacoes_da_selecao, historico_da_selecao
-from contador.servidor.rotas.mapa import disputas_apertadas, mapa_por_uf, regioes_do_pais, senado_em_disputa
+from contador.servidor.rotas.mapa import disputas_apertadas, mapa_historico, mapa_por_uf, regioes_do_pais, senado_em_disputa
 from contador.servidor.rotas.municipios import mapa_municipal, municipios_da_uf
 from contador.servidor.rotas.placar import resultado
 
@@ -18,6 +18,7 @@ ROTAS_API = {
     "/api/atualizacoes": atualizacoes_da_selecao,
     "/api/anuncio": faixa_de_anuncio,
     "/api/mapa": mapa_por_uf,
+    "/api/mapa-historico": mapa_historico,
     "/api/regioes": regioes_do_pais,
     "/api/disputas": disputas_apertadas,
     "/api/camara": camara_dos_deputados,

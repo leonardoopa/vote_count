@@ -50,6 +50,8 @@ def resumo_do_cargo(cargo, ambiente, turno):
     """(status, corpo) do resumo por UF: uma rodada de consultas que mapa, regiões e disputas dividem."""
     def construir():
         corpo, falha = mapa.resumo_por_uf(estado.CACHE.obter, ambiente, cargo, turno)
+        if not falha:
+            estado.HISTORICO_DO_MAPA.registrar((ambiente, cargo, turno), corpo, time.time())  # replay do palco
         return erro_do_tse(*falha) if falha else (200, corpo)
 
     return lembrar(("mapa", ambiente, cargo, turno), construir)

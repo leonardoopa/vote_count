@@ -1,6 +1,7 @@
 """Testes de `tools/gerar_mapa.py`."""
 import io
 import json
+import math
 import sys
 import tempfile
 import unittest
@@ -44,6 +45,33 @@ class GerarMapa(unittest.TestCase):
         self.assertRegex(texto, r'\n  sp: \{"d":"M[^"]+z","c":\[\d+,\d+\],"l":\d+\},')
         self.assertRegex(texto, r'\n  rj: \{"d":"M[^"]+z","c"')
         self.assertEqual(texto.count('"d":"M'), 2)  # a ilha minúscula do RJ some
+
+    def test_municipios_do_brasil_caem_nas_coordenadas_dos_contornos_das_estados(self):
+        def quadrado(x, y, lado):
+            return [[x, y], [x + lado, y], [x + lado, y + lado], [x, y + lado], [x, y]]
+
+        ufs = {"features": [{"properties": {"codarea": "35"}, "geometry": {"type": "Polygon", "coordinates": [quadrado(-50, -25, 20)]}}]}
+        municipios = {"features": [
+            {"properties": {"codarea": "3550308"}, "geometry": {"type": "Polygon", "coordinates": [quadrado(-50, -25, 10)]}},
+            {"properties": {"codarea": "3509502"}, "geometry": {"type": "Polygon", "coordinates": [quadrado(-40, -15, 10)]}},
+        ]}
+
+        def baixar_malha(url):
+            return municipios if "intrarregiao=municipio" in url else ufs
+
+        nomes = lambda url: [{"id": 3550308, "nome": "São Paulo"}, {"id": 3509502, "nome": "Campinas"}]
+        with tempfile.TemporaryDirectory() as pasta:
+            tamanho = gerar_mapa.gerar_brasil_municipios(pasta, baixar_malha, nomes)
+            conteudo = json.loads((Path(pasta) / "brasil.json").read_text(encoding="utf-8"))
+        self.assertGreater(tamanho, 50)
+        self.assertEqual(set(conteudo), {"w", "h", "m", "c", "n"})
+        self.assertEqual(set(conteudo["c"]), set(conteudo["m"]))   # o centro de cada município, para os picos da vantagem
+        self.assertEqual(conteudo["w"], gerar_mapa.LARGURA_BRASIL_MUNICIPIOS)
+        self.assertEqual(set(conteudo["m"]), {"3550308", "3509502"})
+        self.assertEqual(conteudo["n"]["3509502"], "Campinas")
+        # o enquadramento é o dos estados (20 graus de lado), não o dos municípios (que ocupam só 10 de cada um)
+        self.assertEqual(conteudo["h"], round(conteudo["w"] / math.cos(math.radians(15))))
+        self.assertTrue(conteudo["m"]["3550308"].startswith("M0 "))   # começa no canto esquerdo do estado
 
     def test_mundo_so_com_paises_de_codigo_iso_e_sem_antartida(self):
         def pais(iso, nome, x, y, lado, nome_en="x"):

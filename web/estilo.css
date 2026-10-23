@@ -13,14 +13,14 @@
   --good: #006300;
   --wash: rgba(11, 11, 11, 0.05);
   /* cor por partido (posições da paleta categórica); veja COR_PARTIDO no script */
-  --p-azul: #2a78d6;
+  --p-azul: #0b4fff;
   --p-laranja: #eb6834;
   --p-agua: #1baf7a;
   --p-amarelo: #eda100;
   --p-magenta: #e87ba4;
   --p-verde: #008300;
   --p-violeta: #6250d6;
-  --p-vermelho: #e34948;
+  --p-vermelho: #e8101e;
   --p-outros: #898781;
 }
 @media (prefers-color-scheme: dark) {
@@ -37,13 +37,13 @@
     --track: #0d366b;
     --good: #0ca30c;
     --wash: rgba(255, 255, 255, 0.06);
-    --p-azul: #3987e5;
+    --p-azul: #2f6bff;
     --p-laranja: #d95926;
     --p-agua: #199e70;
     --p-amarelo: #c98500;
     --p-magenta: #d55181;
     --p-violeta: #9085e9;
-    --p-vermelho: #e66767;
+    --p-vermelho: #ff2a2a;
   }
 }
 * { box-sizing: border-box; }
@@ -281,7 +281,7 @@ html { scroll-padding-top: calc(var(--anuncio-altura, 0px) + 12px); }
 .mais-votados .meta .eleito { color: var(--good); font-weight: 600; }
 .mapa-svg { display: flex; justify-content: center; margin: 4px 0 8px; }
 .mapa-svg svg { display: block; width: 100%; max-width: 520px; height: auto; }
-.mapa-svg path { stroke: var(--surface); stroke-width: 1.5px; stroke-linejoin: round; cursor: pointer; transition: opacity 0.15s; }
+.mapa-svg path { stroke: var(--surface); stroke-width: 1.5px; stroke-linejoin: round; cursor: pointer; transition: opacity 0.4s, fill 0.9s ease, fill-opacity 0.9s ease; }
 .mapa-svg path:hover { opacity: 0.78; }
 .mapa-svg path.atual { stroke: var(--ink); stroke-width: 3px; }
 .mapa-svg text { font: 600 22px/1 system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink); pointer-events: none; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
@@ -332,3 +332,436 @@ html { scroll-padding-top: calc(var(--anuncio-altura, 0px) + 12px); }
   .ao-vivo.vivo::before { animation: none; }
   .painel, .medidor > i, .barra { transition: none; }
 }
+
+/* ---- Topo: marca, abas por cargo e botões ---- */
+.cabecalho { align-items: center; gap: 10px 16px; }
+.marca { min-width: 0; }
+.abas {
+  display: flex; gap: 2px; padding: 3px; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+}
+.abas::-webkit-scrollbar { display: none; }
+.abas[hidden] { display: none; }
+.abas button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  padding: 6px 14px; border-radius: 999px; font: inherit; font-size: 0.9375rem; font-weight: 600;
+}
+.abas button:hover { color: var(--ink); }
+.abas button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+.abas button:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.sub-abas { margin-top: 10px; width: max-content; }
+.sub-abas button { padding: 4px 12px; font-size: 0.8125rem; }
+.cabecalho-direita { flex: 1 1 auto; justify-content: flex-end; }
+
+/* ---- Duelo: os dois primeiros colocados ---- */
+.duelo { margin: 0 0 16px; padding: 14px 16px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.duelo[hidden] { display: none; }
+.duelo-linha { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px 20px; }
+.duelo-lado { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.duelo-lado.direita { flex-direction: row-reverse; text-align: right; }
+.duelo-foto { position: relative; flex: none; }
+.duelo-foto .foto { width: 64px; height: 64px; font-size: 1.25rem; transition: width 0.4s, height 0.4s, box-shadow 0.4s, filter 0.4s; }
+.duelo-nome { font-weight: 650; font-size: 1.0625rem; overflow-wrap: anywhere; }
+.duelo-partido { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.8125rem; }
+.duelo-lado.direita .duelo-partido { justify-content: flex-end; }
+.duelo-pct { font-size: clamp(1.7rem, 2.4vw + 0.8rem, 2.6rem); font-weight: 650; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.duelo-votos { color: var(--ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.duelo-barra { position: relative; height: 14px; margin: 12px 0 6px; border-radius: 7px; background: var(--track); }
+.duelo-barra i { position: absolute; top: 0; bottom: 0; border-radius: 7px; transition: width 0.8s ease; }
+.duelo-barra i.esq { left: 0; }
+.duelo-barra i.dir { right: 0; }
+.duelo-barra b { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
+.duelo-rodape { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.75rem; }
+@media (max-width: 640px) {
+  .abas button { padding: 6px 10px; font-size: 0.875rem; }
+  .duelo-linha { display: grid; grid-template-columns: 1fr 1fr; }
+  .duelo-lado, .duelo-lado.direita { flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+  .duelo-lado.direita .duelo-partido, .duelo-partido { justify-content: center; }
+  .duelo-foto .foto { width: 56px; height: 56px; }
+  .duelo-rodape span:last-child { display: none; }
+}
+
+/* ---- Compartilhar ---- */
+dialog.estreita { width: min(560px, calc(100vw - 24px)); }
+.sub-titulo { margin: 14px 0 2px; font-size: 0.9375rem; font-weight: 600; }
+.campo-copiar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.campo-copiar input { flex: 1 1 14rem; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; font-size: 0.875rem; }
+#compartilhar-codigo { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: 0.8125rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+
+/* ---- Página incorporada (?embed=1): só o placar ---- */
+.so-incorporado { display: none; }
+html.embed .so-incorporado { display: block; }
+html.embed .pagina { max-width: 720px; padding: 12px 12px 20px; }
+html.embed :is(.anuncio, .abas, .filtros, .cabecalho-direita .botao, .painel > .coluna.centro, .painel > .coluna.dir, #indicadores, #evo, #exportar, #mais) { display: none; }
+html.embed .cabecalho { margin-bottom: 8px; }
+html.embed h1 { font-size: 1.125rem; }
+html.embed .painel { display: block; }
+html.embed .coluna.esq { display: flex; flex-direction: column; gap: 12px; }
+html.embed .rodape p:nth-child(2) { display: none; }
+
+/* ---- Painel em colunas ----
+   Até 1179 px: uma coluna só, na mesma ordem de sempre (os invólucros somem e `order` põe cada bloco no lugar). */
+.coluna { display: contents; }
+@media (max-width: 1179.98px) {
+  .painel { display: flex; flex-direction: column; }
+  #heroi { order: 1; } #resumo { order: 2; } #indicadores { order: 3; } #trilha { order: 4; } #mundo { order: 5; } #mapa { order: 6; }
+  #mapa-mun { order: 7; } #regioes { order: 8; } #hemiciclo { order: 9; } #maisvotados { order: 10; } #evo { order: 11; }
+  #lista { order: 12; } #feed { order: 13; } #disputas { order: 14; } #candidato { order: 7; }
+}
+@media (min-width: 1180px) {
+  .pagina { max-width: 1480px; }
+  .painel { display: flex; align-items: flex-start; gap: 16px; }
+  .painel .coluna { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .painel .coluna > * { margin: 0; }
+  .painel .coluna.esq { flex: 0 0 360px; }
+  .painel .coluna.centro { flex: 1 1 0; }
+  .painel .coluna.dir { flex: 0 0 320px; }
+  .painel .coluna:not(:has(> :not([hidden]))) { display: none; }
+  /* o ranking cabe na coluna estreita com o mesmo desenho do celular */
+  .painel .coluna .linha { grid-template-columns: 1.6rem minmax(0, 1fr) auto; grid-template-areas: "pos quem pct" "pos quem votos" ". trilho trilho"; align-items: start; row-gap: 6px; padding: 10px 8px; }
+  .painel .coluna .linha > .pos { grid-area: pos; }
+  .painel .coluna .linha > .quem { grid-area: quem; }
+  .painel .coluna .linha > .trilho { grid-area: trilho; }
+  .painel .coluna .linha > .votos { grid-area: votos; color: var(--ink-2); font-size: 0.8125rem; }
+  .painel .coluna .linha > .pct { grid-area: pct; }
+  .painel .centro .mapa-svg svg { max-width: 720px; }
+  .painel .coluna.esq .heroi .valor { font-size: 2.75rem; }
+}
+
+/* ---- Palco: um mapa só, três vistas ---- */
+#palco[data-vista="brasil"] > :is(#mapa-mun, #mundo),
+#palco[data-vista="uf"] > :is(#mapa, #mundo),
+#palco[data-vista="mundo"] > :is(#mapa, #mapa-mun) { display: none; }
+#palco > :is(#mapa, #mapa-mun, #mundo):not([hidden]) { animation: entrar-mapa 0.5s ease both; }
+@keyframes entrar-mapa { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+/* o estado escolhido fica e os outros apagam enquanto o zoom corre */
+.mapa-svg svg.focando path:not(.alvo) { opacity: 0.1; }
+.mapa-svg svg.focando text { opacity: 0; transition: opacity 0.3s; }
+/* estado que mudou de cor pisca: a apuração andando */
+.mapa-svg path.mudou { animation: cintilar 1.6s ease-out; }
+@keyframes cintilar { 0% { filter: brightness(2.1) saturate(1.4); } 100% { filter: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #palco > :is(#mapa, #mapa-mun, #mundo):not([hidden]) { animation: none; }
+  .mapa-svg path.mudou { animation: none; }
+  .mapa-svg path { transition: none; }
+}
+
+/* ===== pele cinematográfica: os mapas e o hemiciclo como telas escuras (nos dois temas) =====
+   Os cartões da coluna do meio trocam os tokens de tema pelos do tema escuro: o resto do CSS (legendas, botões, tabelas,
+   traços do mapa) já usa os tokens e acompanha. Os números grandes ganham uma serifa do sistema, sem baixar fonte. */
+:root { --serifa: ui-serif, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif; }
+.duelo-titulo, .duelo-pct, .heroi .valor, .resumo-principal .valor, .resumo-destaques .valor, .indicador .valor { font-family: var(--serifa); font-weight: 600; }
+#palco > .cartao {
+  --surface: #0f0e0d; --ink: #f3f1ec; --ink-2: #b9b5ab; --muted: #8a867c; --grid: #2c2a26; --baseline: #4a4740;
+  --border: rgba(255, 255, 255, 0.11); --wash: rgba(255, 255, 255, 0.06); --series: #3987e5; --track: #0d366b; --good: #34d27b;
+  --p-azul: #2f6bff; --p-laranja: #e0652e; --p-agua: #1fb383; --p-amarelo: #d99200; --p-magenta: #dd5d8d;
+  --p-verde: #1ab31a; --p-violeta: #9085e9; --p-vermelho: #ff2a2a; --p-outros: #98958c;
+  color: var(--ink); border-radius: 18px;
+  background: radial-gradient(110% 80% at 30% 8%, #201d18 0%, var(--surface) 62%), var(--surface);
+  box-shadow: 0 28px 70px -34px rgba(0, 0, 0, 0.65);
+}
+#palco > .cartao h2, #palco > .cartao h3 { font-family: var(--serifa); font-weight: 600; letter-spacing: -0.01em; }
+#palco > .cartao h2 { font-size: 1.25rem; }
+#palco > .cartao .botao, #palco > .cartao .pt-link { background: rgba(255, 255, 255, 0.07); color: var(--ink); border-color: var(--border); }
+#palco > .cartao .botao:hover { background: rgba(255, 255, 255, 0.15); }
+#palco > .cartao .evo-legenda li { padding: 2px 10px 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255, 255, 255, 0.05); font-size: 0.75rem; }
+#palco > .cartao .evo-rolagem thead th { background: #181613; }
+#palco .mapa-svg path { transition: fill 0.8s ease, fill-opacity 0.8s ease, opacity 0.15s, filter 0.2s; }
+/* o mapa com o mouse em cima de um estado: os outros recuam */
+#mapa .mapa-svg svg:not(.focando) > g:first-child:hover path:not(:hover) { opacity: 0.55; }
+
+/* ondas, entrada e o estado que trocou de líder */
+.mapa-svg .onda { fill: none; stroke-width: 2.4px; vector-effect: non-scaling-stroke; transform-box: fill-box; transform-origin: center; pointer-events: none; animation: onda 1.9s ease-out forwards; }
+.mapa-svg .onda-forte { stroke-width: 4px; animation-duration: 2.6s; }
+@keyframes onda { from { transform: scale(0.25); opacity: 0.95; } to { transform: scale(7); opacity: 0; } }
+.mapa-svg path.virou { animation: virou 1.7s ease-out; }
+@keyframes virou { 0%, 100% { filter: none; } 25% { filter: brightness(2.1) saturate(1.4); } }
+.mapa-svg svg.entrando path { animation: acender 0.9s ease-out both; animation-delay: calc(var(--i, 0) * 30ms); }
+@keyframes acender { from { opacity: 0; filter: brightness(2.4); } to { opacity: 1; filter: none; } }
+
+/* rever a noite */
+.replay-mapa { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0 8px; }
+.replay-mapa input[type="range"] { flex: 1 1 140px; min-width: 0; accent-color: var(--ink); }
+.replay-mapa .replay-hora { color: var(--ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.replay-mapa .evo-legenda { flex-basis: 100%; margin: 0; }
+.replay-mapa .evo-legenda[hidden] { display: none; }
+#mapa.em-replay #mapa-legenda { display: none; }
+#mapa.em-replay .mapa-svg path { transition-duration: 0.3s; }
+@media (prefers-reduced-motion: reduce) {
+  .mapa-svg .onda, .mapa-svg path.virou, .mapa-svg svg.entrando path { animation: none; }
+  #palco .mapa-svg path { transition: none; }
+}
+
+
+/* ---- Duelo: quem está na frente salta aos olhos ---- */
+.duelo-lado.lider .duelo-foto .foto { width: 88px; height: 88px; box-shadow: 0 0 0 3px var(--cor), 0 0 22px color-mix(in srgb, var(--cor) 55%, transparent); }
+.duelo-lado.atras .duelo-foto .foto { filter: grayscale(0.55) brightness(0.85); }
+.duelo-lado.atras { opacity: 0.82; }
+.duelo-lado.lider .duelo-pct { font-size: clamp(2.1rem, 3vw + 0.8rem, 3.2rem); }
+.duelo-lado.atras .duelo-pct { font-size: clamp(1.4rem, 1.6vw + 0.7rem, 2rem); color: var(--ink-2); }
+.duelo-selo { position: absolute; right: -2px; bottom: -2px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--good); color: #fff; font-size: 0.8125rem; font-weight: 700; border: 2px solid var(--surface); }
+.duelo-chip { margin-left: 4px; padding: 0 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink); font-size: 0.6875rem; line-height: 1.5; }
+.duelo-centro { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 7.5rem; color: var(--cor, var(--ink-2)); }
+.duelo-setas { width: 34px; height: 34px; flex: none; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+.duelo-setas .fraca { opacity: 0.35; }
+.duelo-centro[data-para="esq"] .duelo-setas { animation: empurrar-esq 1.6s ease-in-out infinite; }
+.duelo-centro[data-para="dir"] .duelo-setas { animation: empurrar-dir 1.6s ease-in-out infinite; }
+@keyframes empurrar-esq { 50% { transform: translateX(-5px); } }
+@keyframes empurrar-dir { 50% { transform: translateX(5px); } }
+.duelo-vantagem { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+.duelo-vantagem b { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.duelo-vantagem small { color: var(--muted); font-size: 0.6875rem; }
+.duelo-barra i.lider { box-shadow: 0 0 14px color-mix(in srgb, var(--cor) 60%, transparent); z-index: 1; }
+@media (max-width: 640px) {
+  .duelo-linha { grid-template-columns: 1fr 1fr; }
+  .duelo-centro { grid-column: 1 / -1; grid-row: 2; min-width: 0; }
+  .duelo-lado.lider .duelo-foto .foto { width: 72px; height: 72px; }
+  .duelo-lado .duelo-foto .foto { width: 52px; height: 52px; }
+}
+@media (prefers-reduced-motion: reduce) { .duelo-centro .duelo-setas { animation: none !important; } }
+
+/* ---- Cartão do mapa (passar o mouse num estado ou cidade) ---- */
+.dica:has(.cartao-lugar) { min-width: 17rem; padding: 12px 14px; }
+.cartao-cab { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.dica .cartao-selo { display: grid; place-items: center; min-width: 2.4rem; height: 2.1rem; padding: 0 6px; border-radius: 6px; color: #fff !important; font-size: 0.8125rem; font-weight: 700; }
+.cartao-cab strong { font-size: 1rem; }
+.cartao-sub { color: var(--ink-2); font-size: 0.8125rem; }
+.cartao-linha { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--border); }
+.cartao-linha .foto { width: 36px; height: 36px; }
+.cartao-nome { font-weight: 600; font-size: 0.9375rem; overflow-wrap: anywhere; }
+.cartao-partido { font-size: 0.75rem; font-weight: 600; }
+.cartao-valores { display: flex; flex-direction: column; align-items: flex-end; font-variant-numeric: tabular-nums; }
+.cartao-valores b { font-size: 1rem; }
+.cartao-valores small { color: var(--muted); font-size: 0.75rem; }
+
+/* ---- Mapa do Brasil por município ---- */
+/* no modo "Municípios" os estados viram só contorno (no replay, voltam a ser pintados) */
+#mapa:not(.em-replay) .mapa-svg svg:not([data-modo="estados"]) path[data-uf] { fill: none !important; fill-opacity: 0 !important; stroke: var(--ink); stroke-width: 1.2px; stroke-opacity: 0.8; vector-effect: non-scaling-stroke; pointer-events: stroke; }
+
+/* ---- Rótulos e etiquetas dos estados ---- */
+.mapa-svg text.uf-sigla { font-size: 20px; }
+.mapa-svg text.uf-pct { font-size: 17px; font-weight: 500; }
+.mapa-svg .etiquetas-linhas line { stroke: var(--ink-2); stroke-opacity: 0.55; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.mapa-svg .etiqueta { cursor: pointer; }
+.mapa-svg .etiqueta[hidden] { display: none; }
+.mapa-svg .etiqueta rect { stroke: rgba(0, 0, 0, 0.35); stroke-width: 1px; vector-effect: non-scaling-stroke; transition: fill 0.9s ease, fill-opacity 0.9s ease; }
+.mapa-svg .etiqueta:hover rect, .mapa-svg .etiqueta:focus-visible rect { stroke: var(--ink); }
+.mapa-svg .etiqueta text { font-size: 15px; font-weight: 700; fill: #fff; stroke: none; paint-order: normal; pointer-events: none; }
+.mapa-svg .etiqueta .etiqueta-pct { font-weight: 600; }
+
+/* ---- Modos do mapa: Municípios, Apurado, Vantagem (picos) e Estados ---- */
+.mapa-modo { position: relative; display: flex; align-items: center; gap: 4px; margin: 6px 0 8px; }
+.mapa-modo[hidden] { display: none; }
+.mapa-modo > button, .mais-mapas-abrir {
+  appearance: none; border: 1px solid transparent; background: transparent; color: var(--ink-2); cursor: pointer;
+  padding: 5px 12px; border-radius: 999px; font: inherit; font-size: 0.875rem; font-weight: 600;
+}
+.mapa-modo > button:hover, .mais-mapas-abrir:hover { color: var(--ink); }
+.mapa-modo > button[aria-pressed="true"], .mais-mapas-abrir[aria-pressed="true"] { background: var(--wash); border-color: var(--border); color: var(--ink); }
+.mapa-modo button:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.mais-mapas { position: relative; }
+.mais-mapas-menu { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; width: 17rem; padding: 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35); }
+.mais-mapas-menu[hidden] { display: none; }
+.mais-mapas-menu button { display: block; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.mais-mapas-menu button:hover, .mais-mapas-menu button[aria-current="true"] { background: var(--wash); }
+.mais-mapas-menu strong { display: block; font-size: 0.9375rem; }
+.mais-mapas-menu span { color: var(--ink-2); font-size: 0.8125rem; }
+.mais-mapas-menu button.com-foto { display: flex; }
+.mais-mapas-menu .foto { width: 40px; height: 40px; color: var(--ink-2); font-size: 0.8125rem; box-shadow: 0 0 0 2px var(--cor); }
+.mapa-svg svg[data-modo="vantagem"] :is(text.uf-sigla, text.uf-pct, .etiquetas, .etiquetas-linhas) { display: none; }
+.escala-picos { display: flex; align-items: flex-end; gap: 10px; }
+.escala-pico { display: inline-flex; align-items: flex-end; gap: 3px; font-size: 0.75rem; color: var(--ink-2); }
+.escala-pico svg { fill: var(--ink-2); }
+.escala-cor { display: inline-flex; align-items: center; gap: 2px; font-size: 0.75rem; color: var(--ink-2); }
+.escala-cor .amostra-cor { border-radius: 2px; }
+
+/* ---- Camada dos municípios (canvas por baixo do SVG dos estados) ---- */
+.mapa-pilha { display: grid; width: 100%; max-width: 720px; }
+.mapa-pilha > * { grid-area: 1 / 1; }
+.mapa-pilha svg { max-width: none; }   /* o SVG fica por cima do canvas: contornos, rótulos e etiquetas */
+.mapa-canvas { width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.7s ease; }
+.mapa-pilha:has(svg:not([data-modo="estados"])) .mapa-canvas { opacity: 1; }
+#mapa.em-replay .mapa-canvas { display: none; }
+
+/* ---- Candidato escolhido no mapa ---- */
+.duelo-lado[role="button"] { cursor: pointer; border-radius: 12px; transition: background 0.2s; }
+.duelo-lado[role="button"]:hover, .duelo-lado.escolhido { background: color-mix(in srgb, var(--cor) 12%, transparent); }
+.duelo-lado[role="button"]:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.duelo-lado.escolhido .duelo-foto .foto { box-shadow: 0 0 0 3px var(--cor), 0 0 22px color-mix(in srgb, var(--cor) 55%, transparent); }
+.candidato-painel[hidden] { display: none; }
+.candidato-painel { display: flex; flex-direction: column; gap: 6px; }
+.candidato-cab { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+.candidato-cab > div:nth-child(2) { flex: 1; min-width: 0; }
+.candidato-foto .foto { width: 56px; height: 56px; }
+.candidato-nome { margin: 0; font-size: 1.25rem; line-height: 1.15; }
+.candidato-partido { font-size: 0.8125rem; font-weight: 600; }
+.candidato-fechar { text-decoration: none; font-size: 1rem; padding: 4px 8px; }
+.candidato-pct { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+.candidato-pct b { font-size: 2.6rem; line-height: 1; font-weight: 600; letter-spacing: -0.02em; }
+.candidato-pct span { color: var(--ink-2); font-size: 0.8125rem; }
+.candidato-dado { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--border); font-size: 0.875rem; }
+.candidato-dado span { color: var(--ink-2); }
+.candidato-sub { margin: 12px 0 2px; font-size: 0.8125rem; font-weight: 600; color: var(--ink-2); }
+.candidato-lista { list-style: none; margin: 0; padding: 0; }
+.candidato-uf { display: grid; grid-template-columns: 2.2rem 1fr 4.5rem 3.6rem; align-items: center; gap: 8px; padding: 6px 0; font-size: 0.875rem; }
+.candidato-sigla { display: grid; place-items: center; height: 1.5rem; border-radius: 4px; background: var(--wash); font-size: 0.6875rem; font-weight: 700; color: var(--ink-2); }
+.candidato-uf .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+
+/* ===== Tela única: tudo cabe na janela, sem rolar a página (o modo incorporado segue o fluxo normal) =====
+   A página vira uma pilha da altura da janela: topo, filtros, duelo e, no que sobra, o painel. O mapa ocupa todo o espaço que
+   resta (a proporção do desenho vem de --proporcao e o container query tira a largura da altura disponível), e o que for mais
+   longo que a janela rola dentro do próprio bloco. Em celular o painel mostra uma tela por vez (telas.js e `data-na-tela`). */
+html:not(.embed), html:not(.embed) body { height: 100%; overflow: hidden; }
+html:not(.embed) .pagina { height: 100dvh; max-width: 1480px; padding: 8px 12px 0; display: flex; flex-direction: column; gap: 8px; }
+html:not(.embed) .pagina > * { flex: none; margin: 0; }
+html:not(.embed) .pagina > .painel { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+html:not(.embed) .painel :is(.cartao, .indicadores, .resumo, .trilha) { margin: 0; }
+html:not(.embed) .cabecalho { gap: 6px 12px; }
+html:not(.embed) .cabecalho .sub { margin: 0; }
+html:not(.embed) .sub-abas { margin-top: 0; }
+html:not(.embed) .filtros { margin: 0; gap: 6px 12px; align-items: center; }
+html:not(.embed) .filtros label { flex-direction: row; align-items: center; gap: 8px; flex: 0 1 auto; max-width: none; }
+html:not(.embed) .filtros label.cidade { flex: 1 1 14rem; max-width: 20rem; }
+html:not(.embed) .filtros select, html:not(.embed) .filtros input { width: auto; min-width: 0; padding: 6px 8px; }
+html:not(.embed) .filtros label.cidade input { width: 100%; }
+html:not(.embed) .aviso { margin: 0; padding: 6px 10px; font-size: 0.875rem; }
+html:not(.embed) .duelo { padding: 8px 12px 8px; }
+html:not(.embed) .duelo-barra { margin: 8px 0 4px; height: 12px; }
+html:not(.embed) .duelo-lado.lider .duelo-foto .foto { width: 68px; height: 68px; }
+html:not(.embed) .duelo-lado .duelo-foto .foto { width: 52px; height: 52px; }
+html:not(.embed) .duelo-pct { font-size: clamp(1.5rem, 2vw + 0.6rem, 2rem); }
+html:not(.embed) .duelo-lado.lider .duelo-pct { font-size: clamp(1.7rem, 2.4vw + 0.6rem, 2.4rem); }
+html:not(.embed) .duelo-lado.atras .duelo-pct { font-size: clamp(1.3rem, 1.6vw + 0.5rem, 1.7rem); }
+html:not(.embed) .duelo-nome { font-size: 1rem; }
+html:not(.embed) .anuncio { position: static; padding: 6px 10px; gap: 2px; box-shadow: none; }
+html:not(.embed) .anuncio-texto { font-size: 0.9375rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+html:not(.embed) .anuncio-conteudo { gap: 4px; }
+html:not(.embed) .anuncio-imagem { max-height: 56px; }
+html:not(.embed) .rodape { margin: 4px 0 8px; }
+
+/* os mapas enchem o cartão: do cabeçalho do cartão até o fim, o que sobra é do desenho */
+html:not(.embed) :is(#mapa, #mapa-mun, #mundo):not([hidden]) { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; padding: 10px 12px; }
+html:not(.embed) :is(#mapa-corpo, #mapa-mun-corpo, #mundo-corpo):not([hidden]) { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+html:not(.embed) :is(#mapa, #mapa-mun, #mundo) .mapa-svg { flex: 1 1 0; min-height: 0; margin: 0; container-type: size; align-items: center; }
+html:not(.embed) :is(#mapa, #mapa-mun, #mundo) .mapa-svg > svg,
+html:not(.embed) :is(#mapa, #mapa-mun, #mundo) .mapa-pilha { width: min(100cqw, calc(100cqh * var(--proporcao, 1))); max-width: none; height: auto; }
+html:not(.embed) :is(#mapa, #mapa-mun, #mundo) .mapa-pilha > svg { width: 100%; height: auto; }
+html:not(.embed) :is(#mapa-legenda, #mapa-mun-legenda, #mundo-legenda) { flex: none; }
+html:not(.embed) .mundo-pais { flex: none; max-height: 40%; overflow-y: auto; }
+html:not(.embed) .evo-nota:empty { display: none; }
+html:not(.embed) .painel :is(.heroi, .resumo) { padding: 10px 14px; }
+html:not(.embed) .painel .coluna.esq .heroi .valor, html:not(.embed) .heroi .valor { font-size: 2.25rem; }
+html:not(.embed) .resumo-principal .valor { font-size: 1.75rem; }
+
+.barra-telas { display: none; }
+
+/* tela larga: as três colunas lado a lado, cada uma rolando por dentro */
+@media (min-width: 1180px) {
+  html:not(.embed) .pagina > .painel { flex-direction: row; align-items: stretch; overflow: hidden; gap: 12px; }
+  html:not(.embed) .painel .coluna { overflow-y: auto; min-height: 0; scrollbar-width: thin; padding-bottom: 8px; }
+  html:not(.embed) .painel .coluna.esq { flex: 0 0 340px; }
+  html:not(.embed) .painel .coluna.dir { flex: 0 0 300px; }
+}
+
+/* celular e tablet: uma tela por vez, trocada pela barra de baixo */
+@media (max-width: 1179.98px) {
+  html:not(.embed) .pagina[data-tela="centro"] [data-na-tela]:not([data-na-tela="centro"]),
+  html:not(.embed) .pagina[data-tela="placar"] [data-na-tela]:not([data-na-tela="placar"]),
+  html:not(.embed) .pagina[data-tela="detalhes"] [data-na-tela]:not([data-na-tela="detalhes"]),
+  html:not(.embed) .pagina[data-tela="aovivo"] [data-na-tela]:not([data-na-tela="aovivo"]) { display: none !important; }
+  html:not(.embed) .rodape { order: 99; }
+  html:not(.embed) .barra-telas {
+    display: flex; gap: 4px; margin: 0 -12px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border); background: var(--surface);
+  }
+  html:not(.embed) .barra-telas button {
+    flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: 5px 0 4px;
+    border: 0; border-radius: 10px; background: transparent; color: var(--ink-2); font: inherit; font-size: 0.6875rem; font-weight: 650; cursor: pointer;
+  }
+  html:not(.embed) .barra-telas button[aria-pressed="true"] { background: var(--wash); color: var(--ink); }
+  html:not(.embed) .barra-telas .icone { width: 22px; height: 22px; background: currentColor; -webkit-mask: var(--icone) center / contain no-repeat; mask: var(--icone) center / contain no-repeat; }
+  .icone-centro { --icone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z'/%3E%3C/svg%3E"); }
+  .icone-placar { --icone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 13h4v8H4zM10 3h4v18h-4zM16 9h4v12h-4z'/%3E%3C/svg%3E"); }
+  .icone-detalhes { --icone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 5h3v3H4zM9 5.5h11v2H9zM4 10.5h3v3H4zM9 11h11v2H9zM4 16h3v3H4zM9 16.5h11v2H9z'/%3E%3C/svg%3E"); }
+  .icone-aovivo { --icone: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6.3 6.3l1.4 1.4a6 6 0 0 0 0 8.6l-1.4 1.4a8 8 0 0 1 0-11.4zm11.4 0a8 8 0 0 1 0 11.4l-1.4-1.4a6 6 0 0 0 0-8.6z'/%3E%3C/svg%3E"); }
+  html:not(.embed) #mapa-explica, html:not(.embed) :is(#mapa-mun-ajuda, #mundo-ajuda) { display: none; }
+  html:not(.embed) :is(#mapa, #mapa-mun, #mundo) details.evo-tabela { display: none; }
+  html:not(.embed) :is(#mapa-legenda, #mapa-mun-legenda, #mundo-legenda) { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; white-space: nowrap; }
+  html:not(.embed) .painel .candidato-painel, html:not(.embed) .painel .cartao { flex: none; }
+  html:not(.embed) .painel :is(#mapa, #mapa-mun, #mundo):not([hidden]) { flex: 1 1 0; }
+}
+
+@media (max-width: 640px) {
+  html:not(.embed) h1 { font-size: 1rem; }
+  html:not(.embed) h1 .ano, html:not(.embed) .cabecalho .sub { display: none; }
+  html:not(.embed) .filtros { flex-wrap: wrap; gap: 6px; }
+  html:not(.embed) .filtros:has(label.cidade:not([hidden])) label { flex-basis: 45%; flex-grow: 1; }   /* com a cidade, são quatro campos: dois por linha */
+  html:not(.embed) .filtros label { flex: 1 1 0; min-width: 0; font-size: 0; }   /* o rótulo fica para leitor de tela: o valor do campo já diz o que é */
+  html:not(.embed) .filtros label:has(#uf) { flex-grow: 0.8; }
+  html:not(.embed) .filtros label:has(#turno) { flex-grow: 1.35; }
+  html:not(.embed) .filtros label:has(#ambiente) { flex-grow: 1.15; }
+  html:not(.embed) .filtros label.cidade { flex: 1.4 1 0; max-width: none; }
+  html:not(.embed) .heroi { display: grid; grid-template-columns: 1fr auto; align-items: baseline; padding: 8px 12px; }
+  html:not(.embed) .heroi .rotulo { grid-column: 1; }
+  html:not(.embed) .heroi .valor { grid-column: 2; grid-row: 1; font-size: 1.75rem; }
+  html:not(.embed) .heroi .medidor { grid-column: 1 / -1; margin: 4px 0; }
+  html:not(.embed) .heroi .detalhe { grid-column: 1 / -1; margin: 0; font-size: 0.75rem; }
+  html:not(.embed) .painel :is(.resumo) { padding: 8px 12px; gap: 6px 16px; }
+  html:not(.embed) .resumo-principal .valor { font-size: 1.375rem; }
+  html:not(.embed) .resumo-destaques { gap: 4px 18px; }
+  html:not(.embed) .resumo-destaques .valor { font-size: 1.125rem; }
+  html:not(.embed) .indicadores { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  html:not(.embed) .indicador { padding: 8px 10px; }
+  html:not(.embed) .indicador .valor { font-size: 0.9375rem; }
+  html:not(.embed) .indicador .detalhe { font-size: 0.6875rem; }
+  html:not(.embed) .filtros select, html:not(.embed) .filtros input { width: 100%; font-size: 0.8125rem; text-overflow: ellipsis; }
+  html:not(.embed) .duelo { padding: 6px 10px; }
+  html:not(.embed) .duelo-linha { grid-template-columns: 1fr auto 1fr; gap: 4px 6px; }
+  html:not(.embed) .duelo-lado, html:not(.embed) .duelo-lado.direita { flex-direction: row; gap: 8px; text-align: left; align-items: center; }
+  html:not(.embed) .duelo-lado.direita { flex-direction: row-reverse; text-align: right; }
+  html:not(.embed) .duelo-lado .duelo-foto .foto { width: 40px; height: 40px; font-size: 0.875rem; }
+  html:not(.embed) .duelo-lado.lider .duelo-foto .foto { width: 52px; height: 52px; }
+  html:not(.embed) .duelo-nome { font-size: 0.75rem; line-height: 1.15; }
+  html:not(.embed) .duelo-partido, html:not(.embed) .duelo-votos { display: none; }
+  html:not(.embed) .duelo-pct, html:not(.embed) .duelo-lado.atras .duelo-pct { font-size: 1.375rem; }
+  html:not(.embed) .duelo-lado.lider .duelo-pct { font-size: 1.625rem; }
+  html:not(.embed) .duelo-centro { grid-column: auto; grid-row: auto; min-width: 0; gap: 2px; }
+  html:not(.embed) .duelo-setas { width: 18px; height: 18px; }
+  html:not(.embed) .duelo-vantagem b { font-size: 1rem; }
+  html:not(.embed) .duelo-rodape { display: none; }
+  html:not(.embed) .painel :is(#mapa, #mapa-mun, #mundo):not([hidden]) { padding: 8px 10px; }
+  html:not(.embed) :is(#mapa-h, #mapa-mun-h, #mundo-h) { font-size: 0.9375rem; }
+  html:not(.embed) .mapa-modo { margin: 2px 0 4px; }
+  html:not(.embed) .mapa-modo > button, html:not(.embed) .mais-mapas-abrir { padding: 4px 10px; font-size: 0.8125rem; }
+  html:not(.embed) .evo-legenda { margin-bottom: 4px; }
+  html:not(.embed) .replay-mapa { margin: 2px 0 0; }
+  html:not(.embed) .trilha { font-size: 0.8125rem; }
+}
+@media (max-width: 640px) and (max-height: 700px) {
+  html:not(.embed) :is(#mapa, #mapa-mun, #mundo) .lista-titulo, html:not(.embed) .replay-mapa { display: none; }
+}
+@media (max-width: 1179.98px) {
+  html:not(.embed) #heroi { order: 1; } html:not(.embed) #lista { order: 2; } html:not(.embed) #resumo { order: 3; } html:not(.embed) #indicadores { order: 4; }   /* na tela "Placar", a lista de candidatos vem logo depois do progresso */
+}
+@media (max-width: 1179.98px) {
+  html:not(.embed) .cabecalho { flex-wrap: wrap; align-items: center; }
+  html:not(.embed) .marca { flex: none; }
+  html:not(.embed) .cabecalho-direita { flex: 1 1 0; min-width: 0; flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+  html:not(.embed) .cabecalho-direita::-webkit-scrollbar, html:not(.embed) .abas::-webkit-scrollbar { display: none; }
+  html:not(.embed) .cabecalho-direita > * { flex: none; white-space: nowrap; }
+  html:not(.embed) .cabecalho .abas { order: 3; flex: 1 1 100%; }
+  html:not(.embed) .cabecalho .abas button { flex: 1 1 auto; text-align: center; }
+}
+@media (min-width: 1180px) and (max-height: 1000px) {   /* notebook: o duelo fica enxuto e o mapa leva o que sobra */
+  html:not(.embed) :is(.duelo-votos, .duelo-rodape, #mapa-explica) { display: none; }
+  html:not(.embed) .duelo-barra { margin: 6px 0 0; }
+  html:not(.embed) .duelo-lado.lider .duelo-foto .foto { width: 60px; height: 60px; }
+  html:not(.embed) .duelo-lado .duelo-foto .foto { width: 48px; height: 48px; }
+  html:not(.embed) :is(#mapa, #mapa-mun, #mundo) details.evo-tabela { display: none; }
+}
+@media (max-width: 400px) {
+  html:not(.embed) .filtros select, html:not(.embed) .filtros input { font-size: 0.75rem; padding: 6px 4px; }
+}
+html:not(.embed) .indicador .valor { white-space: nowrap; font-size: clamp(1rem, 1.4vw, 1.25rem); }   /* o número nunca quebra no meio, nem na coluna estreita */
+@media (max-width: 640px) { html:not(.embed) .indicador .valor { font-size: 0.9375rem; } }

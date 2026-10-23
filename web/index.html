@@ -21,31 +21,45 @@
 <script defer src="/js/evolucao.js"></script>
 <script defer src="/js/contornos-ufs.js"></script>
 <script defer src="/js/mapa-brasil.js"></script>
+<script defer src="/js/mapa-brasil-rotulos.js"></script>
+<script defer src="/js/mapa-brasil-municipios.js"></script>
+<script defer src="/js/mapa-candidato.js"></script>
 <script defer src="/js/mundo.js"></script>
 <script defer src="/js/anuncio.js"></script>
+<script defer src="/js/palco.js"></script>
+<script defer src="/js/mapa-ao-vivo.js"></script>
+<script defer src="/js/abas.js"></script>
+<script defer src="/js/cartao-lugar.js"></script>
+<script defer src="/js/duelo.js"></script>
+<script defer src="/js/compartilhar.js"></script>
+<script defer src="/js/telas.js"></script>
 <script defer src="/js/iniciar.js"></script>
 </head>
 <body>
-<div class="pagina">
+<div class="pagina" id="pagina" data-tela="centro">
   <!-- bloco: anúncio (faixa de publicidade no topo) -->
   <aside class="anuncio" id="anuncio" aria-label="Publicidade" hidden></aside>
   <header class="cabecalho">
-    <div>
-      <h1>Contador de votos · Eleições 2026</h1>
+    <div class="marca">
+      <h1>Contador de votos<span class="ano"> · Eleições 2026</span></h1>
       <p class="sub" id="subtitulo">Carregando…</p>
     </div>
+    <nav class="abas" id="abas" aria-label="Cargo"></nav>
     <div class="cabecalho-direita">
       <div class="selos" id="selos" aria-live="polite"></div>
       <span class="selo ao-vivo" id="ao-vivo" role="status" hidden></span>
       <button class="botao" id="alertas" type="button" aria-pressed="false" hidden>Alertas: desligados</button>
       <button class="botao" id="abrir-busca" type="button" aria-keyshortcuts="/ Control+K Meta+K">Buscar <kbd>/</kbd></button>
       <button class="botao" id="abrir-comparar" type="button">Comparar</button>
+      <button class="botao" id="abrir-exterior" type="button" hidden>Exterior</button>
+      <button class="botao" id="abrir-compartilhar" type="button">Compartilhar</button>
       <button class="botao" id="tela-cheia" type="button" hidden>Tela cheia</button>
     </div>
   </header>
+  <nav class="abas sub-abas" id="abas-deputado" aria-label="Tipo de deputado" hidden></nav>
 
   <form class="filtros" id="filtros" onsubmit="return false">
-    <label>Cargo <select id="cargo"></select></label>
+    <label hidden>Cargo <select id="cargo"></select></label>
     <label>Território <select id="uf"></select></label>
     <label class="cidade" id="rotulo-cidade" hidden>Cidade
       <input id="cidade" type="search" list="cidades" placeholder="Todo o estado — digite para buscar" autocomplete="off" autocapitalize="words" spellcheck="false">
@@ -61,15 +75,19 @@
 
   <p class="aviso" id="aviso" role="status" hidden></p>
 
+  <!-- bloco: duelo (os dois primeiros, para presidente e governador) -->
+  <section class="duelo" id="duelo" aria-label="Disputa pela liderança" hidden></section>
+
   <main class="painel" id="painel">
-    <section class="cartao heroi" aria-label="Progresso da apuração">
+    <div class="coluna esq">
+    <section class="cartao heroi" id="heroi" data-na-tela="placar" aria-label="Progresso da apuração">
       <div class="rotulo">Seções apuradas</div>
       <div class="valor" id="heroi-valor">—</div>
       <div class="medidor" role="progressbar" aria-label="Seções apuradas" aria-valuemin="0" aria-valuemax="100" id="medidor"><i id="medidor-barra" style="width:0"></i></div>
       <div class="detalhe" id="heroi-detalhe"></div>
     </section>
 
-    <section class="cartao resumo" id="resumo" aria-label="Resumo do placar" hidden>
+    <section class="cartao resumo" id="resumo" data-na-tela="placar" aria-label="Resumo do placar" hidden>
       <div class="resumo-principal">
         <div class="rotulo" id="resumo-rotulo"></div>
         <div class="valor" id="resumo-valor"></div>
@@ -78,11 +96,46 @@
       <div class="resumo-destaques" id="resumo-destaques"></div>
     </section>
 
-    <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
+    <section class="indicadores" id="indicadores" data-na-tela="placar" aria-label="Indicadores"></section>
 
+    <!-- bloco: evolução da apuração e replay -->
+    <section class="cartao evo" id="evo" data-na-tela="aovivo" aria-labelledby="evo-h" hidden>
+      <div class="lista-titulo"><h2 id="evo-h">Evolução da apuração</h2><span id="evo-info"></span></div>
+      <p class="evo-nota" id="evo-nota" hidden></p>
+      <div id="evo-corpo" hidden>
+        <p class="evo-eixos">Percentual dos votos válidos de cada candidato, conforme as seções são apuradas.</p>
+        <ul class="evo-legenda" id="evo-legenda"></ul>
+        <div class="evo-grafico" id="evo-grafico"></div>
+        <div class="replay">
+          <button class="botao" id="replay-play" type="button" aria-pressed="false">▶ Reproduzir a apuração</button>
+          <input id="replay-linha" type="range" min="0" max="1" step="1" value="1" aria-label="Linha do tempo da apuração">
+          <span class="replay-hora" id="replay-hora"></span>
+        </div>
+        <ol class="replay-quadro" id="replay-quadro" aria-label="Placar na totalização escolhida" hidden></ol>
+        <details class="evo-tabela">
+          <summary>Ver os números em tabela</summary>
+          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Tabela da evolução da apuração, da totalização mais recente para a mais antiga"><table id="evo-tabela"></table></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="cartao" id="lista" data-na-tela="placar" aria-labelledby="lista-h">
+      <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
+      <ol class="ranking" id="ranking"></ol>
+      <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
+      <div class="exportar" id="exportar" hidden>
+        <span>Exportar o que está na tela:</span>
+        <button class="botao" id="exportar-csv" type="button">CSV (planilha)</button>
+        <button class="botao" id="exportar-json" type="button">JSON</button>
+      </div>
+    </section>
+    </div>
+
+    <div class="coluna centro" id="palco" data-vista="brasil">
     <!-- bloco: mapa-múndi (exterior por país) -->
-    <nav class="trilha" id="trilha" aria-label="Onde você está no mapa" hidden></nav>
-    <section class="cartao mapa-mun mundo" id="mundo" aria-labelledby="mundo-h" hidden>
+    <nav class="trilha" id="trilha" data-na-tela="centro" aria-label="Onde você está no mapa" hidden></nav>
+
+    <section class="cartao mapa-mun mundo" id="mundo" data-na-tela="centro" aria-labelledby="mundo-h" hidden>
       <div class="lista-titulo"><h2 id="mundo-h">Mapa-múndi</h2><span id="mundo-info"></span></div>
       <p class="evo-nota" id="mundo-nota" role="status">Brasileiros votam no exterior para presidente. O TSE publica o resultado por embaixada e consulado, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
       <button class="botao" id="mundo-abrir" type="button">Carregar o mapa-múndi</button>
@@ -108,13 +161,21 @@
     </section>
 
     <!-- bloco: mapa do Brasil e painel por região -->
-    <section class="cartao mapa" id="mapa" aria-labelledby="mapa-h" hidden>
+    <section class="cartao mapa" id="mapa" data-na-tela="centro" aria-labelledby="mapa-h" hidden>
       <div class="lista-titulo"><h2 id="mapa-h">Mapa do Brasil</h2><span id="mapa-info"></span></div>
+      <nav class="mapa-modo" id="mapa-modo" aria-label="Como pintar o mapa" hidden></nav>
       <p class="evo-nota" id="mapa-nota" role="status"></p>
       <div id="mapa-corpo" hidden>
         <p class="evo-eixos" id="mapa-explica"></p>
         <ul class="evo-legenda" id="mapa-legenda"></ul>
         <div class="mapa-svg" id="mapa-svg"></div>
+        <div class="replay-mapa" id="replay-mapa">
+          <button class="botao" id="replay-mapa-play" type="button" aria-pressed="false">▶ Rever a noite</button>
+          <input id="replay-mapa-linha" type="range" min="0" max="1" step="1" value="0" aria-label="Linha do tempo do mapa" hidden>
+          <span class="replay-hora" id="replay-mapa-hora" role="status"></span>
+          <button class="botao" id="replay-mapa-vivo" type="button" hidden>Voltar ao vivo</button>
+          <ul class="evo-legenda" id="replay-mapa-contagem" aria-label="Estados por líder nesse instante" hidden></ul>
+        </div>
         <button class="botao" id="mapa-brasil" type="button" hidden>Ver o Brasil todo</button>
         <details class="evo-tabela">
           <summary>Ver os estados em lista</summary>
@@ -123,7 +184,7 @@
       </div>
     </section>
 
-    <section class="cartao mapa-mun" id="mapa-mun" aria-labelledby="mapa-mun-h" hidden>
+    <section class="cartao mapa-mun" id="mapa-mun" data-na-tela="centro" aria-labelledby="mapa-mun-h" hidden>
       <div class="lista-titulo"><h2 id="mapa-mun-h">Mapa por município</h2><span id="mapa-mun-info"></span></div>
       <p class="evo-nota" id="mapa-mun-nota" role="status">O TSE publica um arquivo por cidade, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
       <button class="botao" id="mapa-mun-abrir" type="button">Carregar o mapa dos municípios</button>
@@ -135,13 +196,8 @@
       </div>
     </section>
 
-    <section class="cartao regioes" id="regioes" aria-labelledby="regioes-h" hidden>
-      <div class="lista-titulo"><h2 id="regioes-h">Por região</h2><span id="regioes-info"></span></div>
-      <div class="regioes-grade" id="regioes-grade"></div>
-    </section>
-
     <!-- bloco: hemiciclo e mais votados -->
-    <section class="cartao hemiciclo" id="hemiciclo" aria-labelledby="hemiciclo-h" hidden>
+    <section class="cartao hemiciclo" id="hemiciclo" data-na-tela="centro" aria-labelledby="hemiciclo-h" hidden>
       <div class="lista-titulo"><h2 id="hemiciclo-h">Hemiciclo</h2><span id="hemiciclo-info"></span></div>
       <p class="evo-nota" id="hemiciclo-nota" role="status"></p>
       <div id="hemiciclo-corpo" hidden>
@@ -154,62 +210,44 @@
       </div>
     </section>
 
-    <section class="cartao" id="maisvotados" aria-labelledby="maisvotados-h" hidden>
+    <section class="cartao" id="maisvotados" data-na-tela="centro" aria-labelledby="maisvotados-h" hidden>
       <div class="lista-titulo"><h2 id="maisvotados-h">Mais votados do Brasil</h2><span id="maisvotados-info"></span></div>
       <p class="evo-nota" id="maisvotados-nota" role="status"></p>
       <ol class="mais-votados" id="maisvotados-lista"></ol>
     </section>
+    </div>
 
-    <!-- bloco: evolução da apuração e replay -->
-    <section class="cartao evo" id="evo" aria-labelledby="evo-h" hidden>
-      <div class="lista-titulo"><h2 id="evo-h">Evolução da apuração</h2><span id="evo-info"></span></div>
-      <p class="evo-nota" id="evo-nota" hidden></p>
-      <div id="evo-corpo" hidden>
-        <p class="evo-eixos">Percentual dos votos válidos de cada candidato, conforme as seções são apuradas.</p>
-        <ul class="evo-legenda" id="evo-legenda"></ul>
-        <div class="evo-grafico" id="evo-grafico"></div>
-        <div class="replay">
-          <button class="botao" id="replay-play" type="button" aria-pressed="false">▶ Reproduzir a apuração</button>
-          <input id="replay-linha" type="range" min="0" max="1" step="1" value="1" aria-label="Linha do tempo da apuração">
-          <span class="replay-hora" id="replay-hora"></span>
-        </div>
-        <ol class="replay-quadro" id="replay-quadro" aria-label="Placar na totalização escolhida" hidden></ol>
-        <details class="evo-tabela">
-          <summary>Ver os números em tabela</summary>
-          <div class="evo-rolagem" tabindex="0" role="region" aria-label="Tabela da evolução da apuração, da totalização mais recente para a mais antiga"><table id="evo-tabela"></table></div>
-        </details>
-      </div>
-    </section>
+    <div class="coluna dir">
+    <section class="cartao candidato-painel" id="candidato" data-na-tela="detalhes" aria-label="Candidato no mapa" hidden></section>
 
-    <section class="cartao" aria-labelledby="lista-h">
-      <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
-      <ol class="ranking" id="ranking"></ol>
-      <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
-      <div class="exportar" id="exportar" hidden>
-        <span>Exportar o que está na tela:</span>
-        <button class="botao" id="exportar-csv" type="button">CSV (planilha)</button>
-        <button class="botao" id="exportar-json" type="button">JSON</button>
-      </div>
-    </section>
-
-    <!-- bloco: atualizações da apuração -->
-    <section class="cartao feed" id="feed" aria-labelledby="feed-h" hidden>
-      <div class="lista-titulo"><h2 id="feed-h">Atualizações da apuração</h2><span id="feed-info"></span></div>
-      <ol class="feed-lista" id="feed-lista"></ol>
+    <section class="cartao regioes" id="regioes" data-na-tela="detalhes" aria-labelledby="regioes-h" hidden>
+      <div class="lista-titulo"><h2 id="regioes-h">Por região</h2><span id="regioes-info"></span></div>
+      <div class="regioes-grade" id="regioes-grade"></div>
     </section>
 
     <!-- bloco: disputas mais apertadas -->
-    <section class="cartao disputas" id="disputas" aria-labelledby="disputas-h" hidden>
+    <section class="cartao disputas" id="disputas" data-na-tela="detalhes" aria-labelledby="disputas-h" hidden>
       <div class="lista-titulo"><h2 id="disputas-h">Disputas mais apertadas</h2><span id="disputas-info"></span></div>
       <p class="evo-nota" id="disputas-nota"></p>
       <ol class="disputas-lista" id="disputas-lista"></ol>
       <button class="mais" id="disputas-mais" type="button" hidden>Mostrar todas</button>
     </section>
+
+    <!-- bloco: atualizações da apuração -->
+    <section class="cartao feed" id="feed" data-na-tela="aovivo" aria-labelledby="feed-h" hidden>
+      <div class="lista-titulo"><h2 id="feed-h">Atualizações da apuração</h2><span id="feed-info"></span></div>
+      <ol class="feed-lista" id="feed-lista"></ol>
+    </section>
+    </div>
   </main>
+
+  <!-- bloco: barra de telas (só em celular): troca entre mapa, placar, detalhes e ao vivo sem rolar a página -->
+  <nav class="barra-telas" id="barra-telas" aria-label="Telas"></nav>
 
   <footer class="rodape">
     <p id="rodape-tempo"></p>
     <p>Quase em tempo real: os totais vêm do TSE, que publica a cada totalização. Este servidor consulta o TSE a cada 10 s e a página atualiza a cada 5 s; o resto do atraso é do TSE. Confira o horário da última totalização acima.</p>
+    <p class="so-incorporado" id="credito-incorporado">Placar do <a href="/" target="_blank" rel="noopener" id="credito-link">Contador de votos · Eleições 2026</a>, atualizado sozinho.</p>
     <p>Fonte: <a href="https://resultados.tse.jus.br" rel="noopener">TSE · resultados.tse.jus.br</a>. Percentuais sobre votos válidos, calculados pelo TSE. Só a divulgação oficial do TSE tem valor legal.</p>
   </footer>
 </div>
@@ -237,6 +275,23 @@
       </div>
       <div id="cmp-b"></div>
     </section>
+  </div>
+</dialog>
+<dialog class="sobreposicao estreita" id="compartilhar" aria-labelledby="compartilhar-h">
+  <form class="sobre-cab" method="dialog"><h2 id="compartilhar-h">Compartilhar esta tela</h2><button class="botao" type="submit">Fechar</button></form>
+  <h3 class="sub-titulo">Link</h3>
+  <p class="meta">Quem abrir vê a mesma seleção: cargo, estado, cidade, turno e a comparação, se estiver aberta.</p>
+  <div class="campo-copiar">
+    <input id="compartilhar-link" type="text" readonly aria-label="Link desta tela">
+    <button class="botao" id="compartilhar-copiar-link" type="button">Copiar link</button>
+    <button class="botao" id="compartilhar-enviar" type="button" hidden>Enviar…</button>
+  </div>
+  <h3 class="sub-titulo">Incorporar no seu site</h3>
+  <p class="meta">Cole este código no blog ou portal. O placar atualiza sozinho, mostra a fonte (TSE) e um link de volta para o Contador de votos.</p>
+  <textarea id="compartilhar-codigo" readonly rows="4" spellcheck="false" aria-label="Código para incorporar"></textarea>
+  <div class="campo-copiar">
+    <button class="botao" id="compartilhar-copiar-codigo" type="button">Copiar código</button>
+    <span class="meta" id="compartilhar-aviso" role="status"></span>
   </div>
 </dialog>
 <noscript><p style="padding:16px">Esta página precisa de JavaScript.</p></noscript>

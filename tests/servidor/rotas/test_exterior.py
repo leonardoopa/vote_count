@@ -47,6 +47,7 @@ class Rota(unittest.TestCase):
         status, corpo = rotas.mundo({"pais": ["pt"]})
         self.assertEqual((status, corpo["total"], corpo["carregadas"], corpo["paises"], corpo["turno"], corpo["ambiente"]), (200, 3, 0, {}, 1, "oficial"))
         self.assertEqual(corpo["brasil"]["lider"]["nome"], "ANA LIMA")
+        self.assertTrue(corpo["fotos"] and all(numero.isdigit() for numero in corpo["fotos"]))   # numero do candidato -> foto (None sem `sqcand`, como no TSE falso)
         while estado.VARREDOR.passo():
             pass
         corpo = rotas.mundo({"pais": ["PT"]})[1]

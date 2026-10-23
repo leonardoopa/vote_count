@@ -1,5 +1,5 @@
 /* Mapa por município. O desenho (geo/<uf>.json, do IBGE) e os dados (uma busca ao TSE por cidade, feita aos poucos
-   pelo servidor) só são pedidos quando a pessoa clica; depois o mapa enche conforme as cidades chegam.
+   pelo servidor) só são pedidos quando a pessoa entra no estado (palco.js); depois o mapa enche conforme as cidades chegam.
    O mapa dá zoom (zoom-mapa.js); a área que está na tela é avisada ao servidor, que busca essas cidades primeiro. */
 const INTERVALO_MAPA_MUN = 15000;
 const ZOOM_MAXIMO_MUN = 40;
@@ -21,7 +21,25 @@ function resumoDaCidade(r) {
 function dicaDaCidade(ibge) {
   const r = mun.dados && mun.dados.cidades[ibge];
   const nome = (munGeo[estado.uf].n || {})[ibge] || (r && r.nome) || "Município";
+  if (r && r.situacao === "lider" && r.segundo) {
+    const comFoto = (c) => ({ ...c, foto: fotoPeloNumero(c.numero) });
+    return cartaoDoLugar({ selo: estado.uf.toUpperCase(), titulo: nome, subtitulo: `${pct(r.apurado)} das seções`, candidatos: [comFoto(r.lider), comFoto(r.segundo)], cor: corDoPartido(r.lider.partido) });
+  }
   return [criar("strong", {}, nome), criar("span", {}, r ? resumoDaCidade(r) : "Placar ainda não carregado: o servidor busca as cidades aos poucos.")];
+}
+
+/* Estado com uma ilha distante (Fernando de Noronha em PE, Trindade no ES) deixaria o desenho inteiro pequeno na tela.
+   O enquadramento inicial ignora o 1% de cidades mais afastadas, se isso tirar bastante área em branco; "Ver tudo" mostra tudo. */
+function enquadrarSemIlhas(caixas, largura, altura) {
+  const centros = [...caixas.values()].map((c) => [c.x + c.width / 2, c.y + c.height / 2]);
+  if (centros.length < 20) return null;
+  const corte = (valores) => {
+    const ordem = [...valores].sort((a, b) => a - b);
+    return [ordem[Math.floor(ordem.length * 0.01)], ordem[Math.ceil(ordem.length * 0.99) - 1]];
+  };
+  const [x0, x1] = corte(centros.map((c) => c[0])), [y0, y1] = corte(centros.map((c) => c[1]));
+  if ((x1 - x0) * (y1 - y0) > 0.6 * largura * altura) return null;   // sem ilha: o desenho inteiro já enquadra bem
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
 }
 
 function construirMapaMun() {
@@ -37,12 +55,15 @@ function construirMapaMun() {
     grupo.append(caminho);
   }
   svg.append(grupo, rotulos);
+  caixa.style.setProperty("--proporcao", String(geo.w / geo.h));
   caixa.replaceChildren(svg);
   const caixas = new Map();               // retângulo de cada cidade no desenho, para saber o que está na tela
   for (const [ibge, caminho] of caminhos) caixas.set(ibge, caminho.getBBox());
   const zoom = ativarZoom(caixa, svg, geo.w, geo.h, { maximo: ZOOM_MAXIMO_MUN, aoParar: aoParouOZoomMun });
   mun.mapa = { uf, svg, grupo, rotulos, caminhos, caixas, zoom, textos: new Map() };
   mun.foco = "";
+  const quadro = enquadrarSemIlhas(caixas, geo.w, geo.h);
+  if (quadro) zoom.irPara(quadro, { margem: 1.2, duracao: 0 });
 
   svg.addEventListener("pointermove", (e) => {
     const alvo = e.buttons ? null : e.target.closest("path[data-ibge]");   // arrastando o mapa, sem dica
@@ -53,7 +74,10 @@ function construirMapaMun() {
   svg.addEventListener("click", (e) => {
     const alvo = e.target.closest("path[data-ibge]");
     const r = alvo && mun.dados && mun.dados.cidades[alvo.dataset.ibge];
-    if (r) { dica.hidden = true; irParaCidade({ uf: estado.uf, codigo: r.codigo }); }
+    if (!r) return;
+    dica.hidden = true;
+    // O zoom até a cidade vem primeiro; o placar dela só troca quando o mapa chega lá.
+    mun.mapa.zoom.irPara(mun.mapa.caixas.get(alvo.dataset.ibge), { margem: 2.4, aoTerminar: () => irParaCidade({ uf: estado.uf, codigo: r.codigo }) });
   });
 }
 
@@ -114,7 +138,7 @@ function aoParouOZoomMun() {
 async function carregarMapaMun() {
   clearTimeout(mun.timer);
   const minha = ++mun.seq, uf = estado.uf;
-  if (!mun.aberto || !temMapaMun()) return;
+  if (!mun.aberto || !temMapaMun() || palco.vista !== "uf") return;   // só busca enquanto o mapa dos municípios está na tela
   $("mapa-mun-tentar").hidden = true;
   try {
     if (!munGeo[uf]) {

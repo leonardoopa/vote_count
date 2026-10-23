@@ -20,6 +20,11 @@ function resumoDoPais(r) {
 
 function dicaDoPais(iso) {
   const r = entradaDoPais(iso), locais = mundo.dados && mundo.dados.locais[iso];
+  if (r && r.situacao === "lider") {   // o mesmo cartão do mapa dos estados: selo do lugar e os dois primeiros com foto
+    const comFoto = (c) => ({ ...c, foto: (mundo.dados.fotos || {})[c.numero] });
+    const onde = r.locais && r.locais !== r.carregados ? ` · ${inteiro(r.carregados)} de ${inteiro(r.locais)} locais` : "";
+    return cartaoDoLugar({ selo: iso, titulo: nomeDoPais(iso), subtitulo: `${pct(r.apurado)} das seções${onde}`, candidatos: [r.lider, r.segundo].filter(Boolean).map(comFoto), cor: corDoPartido(r.lider.partido) });
+  }
   const texto = r ? resumoDoPais(r)
     : locais ? `${inteiro(locais)} ${locais > 1 ? "locais" : "local"} de votação: ainda não carregado`
       : "Sem urna do Brasil neste país";
@@ -30,8 +35,7 @@ function escolherPais(iso) {
   dica.hidden = true;
   if (iso === "BR") {
     mundo.pais = "";
-    if (estado.uf !== "br") trocou("uf", "br");
-    $("mapa").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    voltarAoBrasil();
   } else if (mundo.dados && mundo.dados.locais[iso]) {
     mundo.pais = iso;
     carregarMundo();     // o detalhe do país vem junto da próxima resposta
@@ -56,6 +60,7 @@ function construirMundo() {
     grupo.append(caminho);
   }
   svg.append(grupo, pontos, rotulos);
+  caixa.style.setProperty("--proporcao", String(geo.w / geo.h));
   caixa.replaceChildren(svg);
   const caixas = new Map();
   for (const [iso, caminho] of caminhos) caixas.set(iso, caminho.getBBox());
@@ -170,36 +175,10 @@ function pintarPais() {
       criar("td", {}, c.apurado === undefined ? "—" : pct(c.apurado))))));
 }
 
-/* Onde a pessoa está: Mundo › Brasil › Estado › Cidade, ou Mundo › País. Cada passo é um botão que leva até lá. */
-function pintarTrilha() {
-  const nav = $("trilha");
-  nav.hidden = !temMundo();
-  if (!temMundo()) return;
-  const passos = [["Mundo", () => { mundo.pais = ""; pintarMundo(); pintarPais(); pintarTrilha(); $("mundo").scrollIntoView({ behavior: "smooth", block: "start" }); }]];
-  if (mundo.pais) {
-    passos.push([nomeDoPais(mundo.pais), null]);
-  } else {
-    passos.push(["Brasil", estado.uf === "br" ? null : () => trocou("uf", "br")]);
-    if (estado.uf !== "br") passos.push([UFS[estado.uf] || estado.uf.toUpperCase(), estado.municipio ? () => irParaCidade({ uf: estado.uf, codigo: "" }) : null]);
-    if (estado.municipio) {
-      const cidadeEscolhida = cidadeAtual();
-      passos.push([cidadeEscolhida ? cidadeEscolhida.nome : "Cidade", null]);
-    }
-  }
-  const marca = passos.map(([texto, ao]) => `${texto}${ao ? "*" : ""}`).join("|");
-  if (marca === nav.dataset.marca) return;     // nada mudou: não mexe no que está focado
-  nav.dataset.marca = marca;
-  nav.replaceChildren(criar("ol", {}, ...passos.map(([texto, ao], i) => {
-    const item = criar("li", {}, ao ? criar("button", { class: "botao-link", type: "button" }, texto) : criar("span", { "aria-current": i === passos.length - 1 ? "page" : "false" }, texto));
-    if (ao) item.firstChild.addEventListener("click", ao);
-    return item;
-  })));
-}
-
 async function carregarMundo() {
   clearTimeout(mundo.timer);
   const minha = ++mundo.seq;
-  if (!mundo.aberto || !temMundo()) return;
+  if (!mundo.aberto || !temMundo() || palco.vista !== "mundo") return;   // só busca enquanto o mapa-múndi está na tela
   $("mundo-tentar").hidden = true;
   try {
     if (!mundo.geo) {
@@ -236,7 +215,9 @@ async function carregarMundo() {
 }
 
 aoMudarSelecao.push(() => {
+  $("abrir-exterior").hidden = !temMundo();
   $("mundo").hidden = !temMundo();
+  if (!temMundo() && palco.vista === "mundo") mostrarVista("brasil");
   pintarTrilha();
   if (!temMundo()) { clearTimeout(mundo.timer); mundo.seq++; mundo.marca = ""; return; }
   if (marcaMundo() === mundo.marca) return;   // só mudou estado ou cidade: o mundo é o mesmo
@@ -251,7 +232,6 @@ aoMudarSelecao.push(() => {
   if (!mundo.aberto) { $("mundo-nota").hidden = false; $("mundo-nota").textContent = "Brasileiros votam no exterior para presidente. O TSE publica o resultado por embaixada e consulado, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir."; }
   carregarMundo();
 });
-aoRenderizar.push(() => pintarTrilha());   // o nome da cidade só chega depois da lista de cidades
 $("mundo-abrir").addEventListener("click", () => { mundo.aberto = true; $("mundo-abrir").hidden = true; carregarMundo(); });
 $("mundo-tentar").addEventListener("click", carregarMundo);
 $("mundo-pais-fechar").addEventListener("click", () => { mundo.pais = ""; pintarMundo(); pintarPais(); pintarTrilha(); });
@@ -259,3 +239,5 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) clearTimeout(mundo.timer);
   else if (mundo.aberto && mundo.marca) carregarMundo();
 });
+
+$("abrir-exterior").addEventListener("click", () => irParaVista("mundo"));   // palco.js

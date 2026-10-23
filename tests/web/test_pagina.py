@@ -57,6 +57,43 @@ class Pagina(unittest.TestCase):
         for trecho in ('startsWith("https://")', 'referrerpolicy: "no-referrer"', 'loading: "lazy"', 'addEventListener("error"'):
             self.assertIn(trecho, corpo)
 
+    def test_comparacao_no_endereco_aceita_so_o_que_a_pagina_entende(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node não está instalado")
+        base = (WEB / "js" / "base.js").read_text(encoding="utf-8")
+        trechos = [re.search(rf"const {nome} = \{{.*?\n\}};", base, re.S).group(0) for nome in ("CARGOS", "UFS")]
+        trechos.append(re.search(r"const temChave = .*?\nconst escreverComparacao = [^\n]*", base, re.S).group(0))
+        programa = "const vm = require('vm'); const c = vm.createContext({}); vm.runInContext(process.argv[1], c); process.stdout.write(JSON.stringify(vm.runInContext(process.argv[2], c)));"
+        casos = ["governador:sp:1", "presidente:br:2", "governador:sp:1:62910", "xx:sp:1", "governador:xx:1", "governador:sp:3", "governador:sp:1:123", "", "constructor:sp:1", "governador:sp"]
+        consulta = f"[{json.dumps(casos)}.map(lerComparacao), escreverComparacao(lerComparacao('governador:sp:1:62910'))]"
+        resultado = subprocess.run([node, "-e", programa, "\n".join(trechos), consulta], capture_output=True, text=True)
+        self.assertEqual(resultado.returncode, 0, resultado.stderr[-600:])
+        lidas, escrita = json.loads(resultado.stdout)
+        self.assertEqual(lidas[0], {"cargo": "governador", "uf": "sp", "turno": "1", "municipio": ""})
+        self.assertEqual(lidas[1]["uf"], "br")
+        self.assertEqual(lidas[2]["municipio"], "62910")
+        self.assertEqual(lidas[3:], [None] * 7)   # cargo, UF, turno ou município inválidos, vazio, chave de protótipo e turno faltando
+        self.assertEqual(escrita, "governador:sp:1:62910")
+
+    def test_toda_vista_do_palco_existe_na_pagina_no_css_e_no_script(self):
+        palco = re.search(r'<div class="coluna centro" id="palco" data-vista="brasil">(.*?)\n    </div>\n\n    <div class="coluna dir"', HTML, re.S).group(1)
+        for secao in ("mapa", "mapa-mun", "mundo"):
+            self.assertIn(f'id="{secao}"', palco)
+        for vista in ("brasil", "uf", "mundo"):
+            self.assertIn(f'data-vista="{vista}"', CSS)
+            self.assertIn(f'"{vista}"', (WEB / "js" / "palco.js").read_text(encoding="utf-8"))
+
+    def test_as_abas_levam_a_todos_os_cargos(self):
+        abas = (WEB / "js" / "abas.js").read_text(encoding="utf-8")
+        cargos_das_abas = set(re.findall(r'"((?:presidente|governador|senador|deputado-[a-z]+))"', abas))
+        self.assertEqual(cargos_das_abas, set(re.findall(r'^  "?([a-z-]+)"?: "', re.search(r"const CARGOS = \{(.*?)\n\};", script(), re.S).group(1), re.M)))
+
+    def test_modo_incorporado_so_mostra_o_placar(self):
+        for escondido in (".abas", ".filtros", ".anuncio", ".coluna.centro", ".coluna.dir"):
+            self.assertRegex(CSS, rf"html\.embed :is\([^)]*{re.escape(escondido)}")
+        self.assertIn('class="so-incorporado"', HTML)
+
     def test_scripts_nunca_montam_html_de_texto(self):
         """Texto do anúncio, nomes e endereços entram por textContent e atributos: nada de montar HTML na mão."""
         for nome in ARQUIVOS_JS:

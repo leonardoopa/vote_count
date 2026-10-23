@@ -17,6 +17,12 @@ class UrlFoto(unittest.TestCase):
             "https://resultados.tse.jus.br/oficial/ele2026/6260/fotos/sp/250002541303.jpeg",
         )
 
+    def test_foto_de_presidente_fica_na_pasta_br_mesmo_dentro_de_um_estado(self):
+        self.assertEqual(
+            catalogo.url_foto("oficial", "presidente", "pe", 1, "280002551544"),
+            "https://resultados.tse.jus.br/oficial/ele2026/6257/fotos/br/280002551544.jpeg",
+        )
+
     def test_so_aceita_numero_de_candidato(self):
         for sqcand in (None, "", "12 3", "../x", "1.jpeg?x=1", "١٢٣"):
             with self.subTest(sqcand=sqcand):

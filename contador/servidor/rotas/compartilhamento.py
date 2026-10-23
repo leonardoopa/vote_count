@@ -18,6 +18,7 @@ PAGINA = WEB / "index.html"
 
 URL_PUBLICA = os.environ.get("URL_PUBLICA", "")  # ex.: https://votos.exemplo.com.br; sem ela, vale o Host da requisição
 MARCA_DO_HEAD = "<!-- bloco: pwa e prévia de compartilhamento (head) -->"
+MARCA_DO_HTML = '<html lang="pt-BR">'
 TTL_CARTAO = 60
 MAX_CARTOES = 64
 _CARTOES = OrderedDict()  # chave da seleção + totalização -> (vale até, PNG)
@@ -73,7 +74,11 @@ def pagina(consulta, cabecalhos):
         dados = estado.CACHE.espiar(catalogo.montar_url(ambiente, cargo, uf, turno, municipio=municipio or None))
         descricao = compartilhar.descricao_do_placar(resumir(dados, 3) if dados else None)
         meta = compartilhar.meta_tags(base, consulta_canonica(*selecao), compartilhar.titulo_da_selecao(cargo, uf, turno, cidade), descricao)
-    return PAGINA.read_text(encoding="utf-8").replace(MARCA_DO_HEAD, meta, 1).encode()
+    html = PAGINA.read_text(encoding="utf-8").replace(MARCA_DO_HEAD, meta, 1)
+    if consulta.get("embed") == ["1"]:
+        # Dentro do iframe de outro site (?embed=1): a página já nasce com o visual enxuto, sem piscar, e fora dos buscadores.
+        html = html.replace(MARCA_DO_HTML, '<html lang="pt-BR" class="embed">', 1).replace("<head>", '<head>\n<meta name="robots" content="noindex">', 1)
+    return html.encode()
 
 
 def pagina_inicial(consulta, cabecalhos):

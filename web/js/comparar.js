@@ -59,6 +59,7 @@ function sincronizarLadoB() {
   $("cmp-turno").options[1].disabled = !temSegundoTurno;
   $("cmp-turno").value = cmp.turno;
   $("cmp-rotulo-cidade").hidden = cmp.uf === "br";
+  if (comparacaoAberta) atualizarEndereco();
 }
 
 async function carregarCidadesDoLadoB() {
@@ -73,7 +74,10 @@ async function carregarCidadesDoLadoB() {
     if (minha !== cmpSeqCidades) return;
     if (resposta.ok) cmpCidades = corpo.municipios;
   } catch { /* sem lista, compara o estado inteiro */ }
-  if (minha === cmpSeqCidades) $("cmp-cidades").replaceChildren(...cmpCidades.map((c) => new Option(c.nome)));
+  if (minha !== cmpSeqCidades) return;
+  $("cmp-cidades").replaceChildren(...cmpCidades.map((c) => new Option(c.nome)));
+  const daUrl = cmpCidades.find((c) => c.codigo === cmp.municipio);   // veio no endereço: mostra o nome dela no campo
+  if (daUrl) $("cmp-cidade").value = daUrl.nome;
 }
 
 function mudouLadoB(campo, valor) {
@@ -92,25 +96,35 @@ function escolherCidadeDoLadoB() {
   const codigo = achada ? achada.codigo : "";
   if (codigo === cmp.municipio) return;
   cmp.municipio = codigo;
+  atualizarEndereco();
   carregarLadoB();
 }
 
-function abrirComparar() {
-  Object.assign(cmp, { cargo: estado.cargo, turno: estado.turno, municipio: "" });
-  cmp.uf = estado.uf === "br" ? "sp" : estado.cargo === "presidente" ? "br" : estado.uf === "sp" ? "rj" : "sp";
+/* `inicial` vem do endereço (?comparar=...): abre já com aquela seleção à direita. */
+function abrirComparar(inicial = null) {
+  if (inicial) Object.assign(cmp, inicial);
+  else {
+    Object.assign(cmp, { cargo: estado.cargo, turno: estado.turno, municipio: "" });
+    cmp.uf = estado.uf === "br" ? "sp" : estado.cargo === "presidente" ? "br" : estado.uf === "sp" ? "rj" : "sp";
+  }
   $("cmp-cidade").value = "";
   sincronizarLadoB();
   pintarLadoA();
   carregarLadoB();
   carregarCidadesDoLadoB();
+  comparacaoAberta = cmp;
+  atualizarEndereco();
   $("comparar").showModal();
 }
 
-$("abrir-comparar").addEventListener("click", abrirComparar);
-$("comparar").addEventListener("close", () => { clearTimeout(cmpTimer); cmpSeq++; });
+$("abrir-comparar").addEventListener("click", () => abrirComparar());
+$("comparar").addEventListener("close", () => { clearTimeout(cmpTimer); cmpSeq++; comparacaoAberta = null; atualizarEndereco(); });
 $("cmp-cargo").addEventListener("change", (e) => mudouLadoB("cargo", e.target.value));
 $("cmp-uf").addEventListener("change", (e) => mudouLadoB("uf", e.target.value));
 $("cmp-turno").addEventListener("change", (e) => mudouLadoB("turno", e.target.value));
 $("cmp-cidade").addEventListener("input", escolherCidadeDoLadoB);
 $("cmp-cidade").addEventListener("change", escolherCidadeDoLadoB);
 aoRenderizar.push(() => { if ($("comparar").open) pintarLadoA(); });
+
+const comparacaoDoEndereco = lerComparacao(params.get("comparar"));
+if (comparacaoDoEndereco && !embutido) abrirComparar(comparacaoDoEndereco);

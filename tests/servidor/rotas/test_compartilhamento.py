@@ -25,6 +25,14 @@ class Pagina(unittest.TestCase):
     def html(self, consulta, host="127.0.0.1:8000"):
         return compartilhamento.pagina(consulta, {"Host": host}).decode()
 
+    def test_incorporada_ja_nasce_enxuta_e_fora_dos_buscadores(self):
+        incorporada = self.html({"embed": ["1"]})
+        self.assertIn('<html lang="pt-BR" class="embed">', incorporada)
+        self.assertIn('<meta name="robots" content="noindex">', incorporada)
+        comum = self.html({})
+        self.assertNotIn('class="embed"', comum)
+        self.assertNotIn("noindex", comum)
+
     def test_sem_selecao_usa_o_padrao(self):
         pagina = self.html({})
         self.assertNotIn(compartilhamento.MARCA_DO_HEAD, pagina)

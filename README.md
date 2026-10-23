@@ -167,6 +167,8 @@ O mapa do centro tem três vistas, e só a que está na tela busca dados no serv
 - **Estado:** clicar num estado dá zoom animado até ele, os outros apagam e entra o mapa dos municípios, que enche aos poucos conforme o varredor busca as cidades. Clicar numa cidade dá outro zoom até ela e o placar passa a ser o da cidade.
 - **Exterior:** o botão "Exterior" troca o mapa pelo mapa-múndi, na mesma posição. A trilha "Brasil › Estado › Cidade" (ou "Brasil › Exterior › País") volta um passo.
 
+**Mapa ao vivo** (`web/js/mapa-ao-vivo.js`). Na primeira pintura os estados acendem do oeste para o leste; onde chegou voto novo sai uma onda do centro do estado, maior (e com o estado piscando) quando o líder mudou. **Rever a noite** toca as fotos do mapa que o servidor guardou (`/api/mapa-historico`): os estados trocam de cor na ordem em que aconteceu, com a contagem de estados por partido naquele instante, linha do tempo para arrastar e "Voltar ao vivo". Quem prefere menos movimento não vê as ondas nem a entrada. Os cartões da coluna do meio (mapas, mapa-múndi, hemiciclo, mais votados) são telas escuras nos dois temas: trocam os tokens de tema pelos do tema escuro, e os números grandes usam uma serifa do sistema, sem baixar fonte.
+
 **Compartilhar** abre o link da tela (cargo, estado, cidade, turno e, se estiver aberta, a comparação: `?comparar=cargo:uf:turno[:município]`) e o código para **incorporar** o placar em outro site: um `<iframe>` com `?embed=1`. A página incorporada mostra só o título, o duelo, o progresso, o resumo e o ranking, atualiza sozinha, não traz anúncio, mapas nem service worker, sai dos buscadores (`noindex`) e termina com a fonte e um link de volta. O servidor já devolve o HTML com a classe `embed`, então a página não pisca.
 
 ### Atraso: é quase tempo real
@@ -253,6 +255,8 @@ Para o histórico sobreviver a um reinício, defina `HISTORICO_DIR` (no Docker j
 `/api/disputas` devolve `{"disputas": [...]}` das corridas por menor diferença de votos: `entre` traz os dois candidatos que decidem a vaga (1º e 2º no governo; 2º e 3º no Senado, que tem 2 vagas por UF em 2026) e `situacao` é `apurando`, `eleito` ou `segundo_turno`. Ficam de fora as UFs sem disputa, sem dados e sem apuração iniciada.
 
 Os contornos do mapa vêm da malha de UFs do IBGE, simplificada por `tools/gerar_mapa.py` e gravada em `web/js/contornos-ufs.js` (o servidor nunca acessa o IBGE). Para refazer: `python3 tools/gerar_mapa.py > web/js/contornos-ufs.js`.
+
+`GET /api/mapa-historico` (presidente e governador; `cargo`, `turno` e `ambiente`) devolve `{"fotos": [{"t": segundos, "ufs": {"sp": ["PT", 12.3, 55.5]}}]}`, da mais antiga para a mais nova: para cada UF, o partido do líder (vazio se não há líder), a margem e o percentual das seções. O servidor guarda uma foto a cada mudança do mapa, só em memória (até 240 por seleção, 12 seleções), e devolve no máximo 120 espalhadas por igual. Só lê o que já foi guardado: nunca consulta o TSE. Sem visitantes não há fotos.
 
 ### Hemiciclo e mais votados
 
@@ -373,6 +377,7 @@ contador/                       o programa (pacote Python, só biblioteca padrã
     exterior.py                 exterior por país (mapa-múndi)
     deputados.py                hemiciclo da Câmara e mais votados
     historico.py                série do placar, replay e feed de atualizações
+    historico_mapa.py           fotos do mapa por UF, para rever a noite
   divulgacao/
     compartilhar.py             meta tags e imagem de prévia do link
     imagem.py                   gerador de PNG (cartão de prévia e ícones), só zlib

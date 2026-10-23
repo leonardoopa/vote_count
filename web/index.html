@@ -21,22 +21,27 @@
 <script defer src="/js/evolucao.js"></script>
 <script defer src="/js/contornos-ufs.js"></script>
 <script defer src="/js/mapa-brasil.js"></script>
+<script defer src="/js/mapa-brasil-rotulos.js"></script>
+<script defer src="/js/mapa-brasil-municipios.js"></script>
+<script defer src="/js/mapa-candidato.js"></script>
 <script defer src="/js/mundo.js"></script>
 <script defer src="/js/anuncio.js"></script>
 <script defer src="/js/palco.js"></script>
 <script defer src="/js/mapa-ao-vivo.js"></script>
 <script defer src="/js/abas.js"></script>
+<script defer src="/js/cartao-lugar.js"></script>
 <script defer src="/js/duelo.js"></script>
 <script defer src="/js/compartilhar.js"></script>
+<script defer src="/js/telas.js"></script>
 <script defer src="/js/iniciar.js"></script>
 </head>
 <body>
-<div class="pagina">
+<div class="pagina" id="pagina" data-tela="centro">
   <!-- bloco: anúncio (faixa de publicidade no topo) -->
   <aside class="anuncio" id="anuncio" aria-label="Publicidade" hidden></aside>
   <header class="cabecalho">
     <div class="marca">
-      <h1>Contador de votos · Eleições 2026</h1>
+      <h1>Contador de votos<span class="ano"> · Eleições 2026</span></h1>
       <p class="sub" id="subtitulo">Carregando…</p>
     </div>
     <nav class="abas" id="abas" aria-label="Cargo"></nav>
@@ -75,14 +80,14 @@
 
   <main class="painel" id="painel">
     <div class="coluna esq">
-    <section class="cartao heroi" id="heroi" aria-label="Progresso da apuração">
+    <section class="cartao heroi" id="heroi" data-na-tela="placar" aria-label="Progresso da apuração">
       <div class="rotulo">Seções apuradas</div>
       <div class="valor" id="heroi-valor">—</div>
       <div class="medidor" role="progressbar" aria-label="Seções apuradas" aria-valuemin="0" aria-valuemax="100" id="medidor"><i id="medidor-barra" style="width:0"></i></div>
       <div class="detalhe" id="heroi-detalhe"></div>
     </section>
 
-    <section class="cartao resumo" id="resumo" aria-label="Resumo do placar" hidden>
+    <section class="cartao resumo" id="resumo" data-na-tela="placar" aria-label="Resumo do placar" hidden>
       <div class="resumo-principal">
         <div class="rotulo" id="resumo-rotulo"></div>
         <div class="valor" id="resumo-valor"></div>
@@ -91,10 +96,10 @@
       <div class="resumo-destaques" id="resumo-destaques"></div>
     </section>
 
-    <section class="indicadores" id="indicadores" aria-label="Indicadores"></section>
+    <section class="indicadores" id="indicadores" data-na-tela="placar" aria-label="Indicadores"></section>
 
     <!-- bloco: evolução da apuração e replay -->
-    <section class="cartao evo" id="evo" aria-labelledby="evo-h" hidden>
+    <section class="cartao evo" id="evo" data-na-tela="aovivo" aria-labelledby="evo-h" hidden>
       <div class="lista-titulo"><h2 id="evo-h">Evolução da apuração</h2><span id="evo-info"></span></div>
       <p class="evo-nota" id="evo-nota" hidden></p>
       <div id="evo-corpo" hidden>
@@ -114,7 +119,7 @@
       </div>
     </section>
 
-    <section class="cartao" id="lista" aria-labelledby="lista-h">
+    <section class="cartao" id="lista" data-na-tela="placar" aria-labelledby="lista-h">
       <div class="lista-titulo"><h2 id="lista-h">Candidatos</h2><span id="lista-info"></span></div>
       <ol class="ranking" id="ranking"></ol>
       <button class="mais" id="mais" type="button" hidden>Mostrar mais candidatos</button>
@@ -128,9 +133,9 @@
 
     <div class="coluna centro" id="palco" data-vista="brasil">
     <!-- bloco: mapa-múndi (exterior por país) -->
-    <nav class="trilha" id="trilha" aria-label="Onde você está no mapa" hidden></nav>
+    <nav class="trilha" id="trilha" data-na-tela="centro" aria-label="Onde você está no mapa" hidden></nav>
 
-    <section class="cartao mapa-mun mundo" id="mundo" aria-labelledby="mundo-h" hidden>
+    <section class="cartao mapa-mun mundo" id="mundo" data-na-tela="centro" aria-labelledby="mundo-h" hidden>
       <div class="lista-titulo"><h2 id="mundo-h">Mapa-múndi</h2><span id="mundo-info"></span></div>
       <p class="evo-nota" id="mundo-nota" role="status">Brasileiros votam no exterior para presidente. O TSE publica o resultado por embaixada e consulado, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
       <button class="botao" id="mundo-abrir" type="button">Carregar o mapa-múndi</button>
@@ -156,8 +161,9 @@
     </section>
 
     <!-- bloco: mapa do Brasil e painel por região -->
-    <section class="cartao mapa" id="mapa" aria-labelledby="mapa-h" hidden>
+    <section class="cartao mapa" id="mapa" data-na-tela="centro" aria-labelledby="mapa-h" hidden>
       <div class="lista-titulo"><h2 id="mapa-h">Mapa do Brasil</h2><span id="mapa-info"></span></div>
+      <nav class="mapa-modo" id="mapa-modo" aria-label="Como pintar o mapa" hidden></nav>
       <p class="evo-nota" id="mapa-nota" role="status"></p>
       <div id="mapa-corpo" hidden>
         <p class="evo-eixos" id="mapa-explica"></p>
@@ -178,7 +184,7 @@
       </div>
     </section>
 
-    <section class="cartao mapa-mun" id="mapa-mun" aria-labelledby="mapa-mun-h" hidden>
+    <section class="cartao mapa-mun" id="mapa-mun" data-na-tela="centro" aria-labelledby="mapa-mun-h" hidden>
       <div class="lista-titulo"><h2 id="mapa-mun-h">Mapa por município</h2><span id="mapa-mun-info"></span></div>
       <p class="evo-nota" id="mapa-mun-nota" role="status">O TSE publica um arquivo por cidade, então o servidor busca as cidades uma a uma e o mapa enche aos poucos. Só começa se você pedir.</p>
       <button class="botao" id="mapa-mun-abrir" type="button">Carregar o mapa dos municípios</button>
@@ -191,7 +197,7 @@
     </section>
 
     <!-- bloco: hemiciclo e mais votados -->
-    <section class="cartao hemiciclo" id="hemiciclo" aria-labelledby="hemiciclo-h" hidden>
+    <section class="cartao hemiciclo" id="hemiciclo" data-na-tela="centro" aria-labelledby="hemiciclo-h" hidden>
       <div class="lista-titulo"><h2 id="hemiciclo-h">Hemiciclo</h2><span id="hemiciclo-info"></span></div>
       <p class="evo-nota" id="hemiciclo-nota" role="status"></p>
       <div id="hemiciclo-corpo" hidden>
@@ -204,7 +210,7 @@
       </div>
     </section>
 
-    <section class="cartao" id="maisvotados" aria-labelledby="maisvotados-h" hidden>
+    <section class="cartao" id="maisvotados" data-na-tela="centro" aria-labelledby="maisvotados-h" hidden>
       <div class="lista-titulo"><h2 id="maisvotados-h">Mais votados do Brasil</h2><span id="maisvotados-info"></span></div>
       <p class="evo-nota" id="maisvotados-nota" role="status"></p>
       <ol class="mais-votados" id="maisvotados-lista"></ol>
@@ -212,13 +218,15 @@
     </div>
 
     <div class="coluna dir">
-    <section class="cartao regioes" id="regioes" aria-labelledby="regioes-h" hidden>
+    <section class="cartao candidato-painel" id="candidato" data-na-tela="detalhes" aria-label="Candidato no mapa" hidden></section>
+
+    <section class="cartao regioes" id="regioes" data-na-tela="detalhes" aria-labelledby="regioes-h" hidden>
       <div class="lista-titulo"><h2 id="regioes-h">Por região</h2><span id="regioes-info"></span></div>
       <div class="regioes-grade" id="regioes-grade"></div>
     </section>
 
     <!-- bloco: disputas mais apertadas -->
-    <section class="cartao disputas" id="disputas" aria-labelledby="disputas-h" hidden>
+    <section class="cartao disputas" id="disputas" data-na-tela="detalhes" aria-labelledby="disputas-h" hidden>
       <div class="lista-titulo"><h2 id="disputas-h">Disputas mais apertadas</h2><span id="disputas-info"></span></div>
       <p class="evo-nota" id="disputas-nota"></p>
       <ol class="disputas-lista" id="disputas-lista"></ol>
@@ -226,12 +234,15 @@
     </section>
 
     <!-- bloco: atualizações da apuração -->
-    <section class="cartao feed" id="feed" aria-labelledby="feed-h" hidden>
+    <section class="cartao feed" id="feed" data-na-tela="aovivo" aria-labelledby="feed-h" hidden>
       <div class="lista-titulo"><h2 id="feed-h">Atualizações da apuração</h2><span id="feed-info"></span></div>
       <ol class="feed-lista" id="feed-lista"></ol>
     </section>
     </div>
   </main>
+
+  <!-- bloco: barra de telas (só em celular): troca entre mapa, placar, detalhes e ao vivo sem rolar a página -->
+  <nav class="barra-telas" id="barra-telas" aria-label="Telas"></nav>
 
   <footer class="rodape">
     <p id="rodape-tempo"></p>

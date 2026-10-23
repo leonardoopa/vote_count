@@ -255,3 +255,48 @@ class Prioridade(unittest.TestCase):
         v.priorizar(grupo, ["a", "b", "c", "d"])
         self.assertEqual(v.por_segundo, 2)
         self.assertEqual(len(self.buscados(v, 10)), 4)
+
+
+class Trabalhadores(unittest.TestCase):
+    def test_uma_thread_ate_cinco_por_segundo_e_mais_acima_disso_com_teto(self):
+        quantas = {por_segundo: Varredor(por_segundo).trabalhadores for por_segundo in (1, 2, 5, 6, 15, 30, 100)}
+        self.assertEqual(quantas, {1: 1, 2: 1, 5: 1, 6: 2, 15: 5, 30: 8, 100: 8})
+
+    def test_pedir_cria_as_threads_ajudantes_e_nao_repete(self):
+        v, _ = criar_varredor({"u0": R(200, {"x": 0}, None)}, por_segundo=12)
+        with mock.patch.object(threading.Thread, "start"):
+            v.pedir("g", fabrica({"c0": "u0"}))
+        self.assertEqual(len(v._ajudantes), 3)   # 12 por segundo: 4 threads no total, uma é a principal
+
+    def test_cada_thread_espera_o_que_cabe_a_ela_do_teto(self):
+        v, _ = criar_varredor({f"u{i}": R(200, {"x": i}, None) for i in range(3)}, por_segundo=12)
+        with mock.patch.object(threading.Thread, "start"):
+            v.pedir("g", fabrica({f"c{i}": f"u{i}" for i in range(3)}))
+        esperas = []
+
+        def dormir(segundos):
+            esperas.append(segundos)
+            if len(esperas) == 4:
+                raise Thread.Parar
+
+        v.dormir = dormir
+        with self.assertRaises(Thread.Parar):
+            v._rodar()
+        self.assertEqual(esperas, [4 / 12] * 3 + [1.0])   # 4 threads dividem o teto: cada uma espera 4/12 s
+
+    def test_o_arquivo_que_uma_thread_buscou_fica_reservado_para_as_outras(self):
+        v, _ = criar_varredor({}, por_segundo=10)
+        pedidos = []
+
+        def buscar(url, etag=None):
+            pedidos.append(url)
+            if url == "ua":
+                v.passo()   # outra thread, enquanto a rede de "ua" ainda não respondeu
+            return R(200, {"x": 1}, None)
+
+        v.buscar = buscar
+        with mock.patch.object(threading.Thread, "start"):
+            v.pedir("g", fabrica({"a": "ua", "b": "ub"}))
+        v.passo()
+        self.assertEqual(pedidos, ["ua", "ub"])   # sem a reserva, a segunda thread buscaria "ua" de novo
+

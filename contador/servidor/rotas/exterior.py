@@ -5,7 +5,7 @@ from contador import varredor
 from contador.recursos import exterior, municipios
 from contador.servidor import estado, respostas
 from contador.servidor.respostas import RECURSO_DESLIGADO, erro_do_tse
-from contador.tse import catalogo
+from contador.tse import catalogo, leitura
 from contador.tse.cache import TTL_MUNICIPIOS
 
 
@@ -37,6 +37,8 @@ def mundo(consulta):
     grupo = estado.VARREDOR.pedir(("exterior", ambiente, turno), fabrica)
     corpo = exterior.montar(cidades, estado.VARREDOR.resumos(grupo), estado.VARREDOR.relogio(), pais or None)
     corpo.update(ambiente=ambiente, turno=turno)
+    # a foto de cada candidato (pela posição no arquivo do exterior): o cartão do país mostra líder e segundo com foto
+    corpo["fotos"] = {c["n"]: catalogo.url_foto(ambiente, "presidente", "br", turno, c.get("sqcand")) for c in leitura.candidatos(dados)}
     status_do_mapa, mapa_dos_estados = respostas.resumo_do_cargo("presidente", ambiente, turno)
     corpo["brasil"] = exterior.brasil(mapa_dos_estados) if status_do_mapa == 200 else None
     return 200, corpo

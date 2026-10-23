@@ -4,6 +4,7 @@
     python3 tools/gerar_mapa.py > web/js/contornos-ufs.js   # baixa a malha do IBGE
     python3 tools/gerar_mapa.py malha.geojson               # ou usa um arquivo já baixado
     python3 tools/gerar_mapa.py --municipios web/geo        # um arquivo por UF, com os municípios
+    python3 tools/gerar_mapa.py --brasil web/geo            # web/geo/brasil.json, com todos os municípios no desenho do Brasil
     python3 tools/gerar_mapa.py --mundo web/geo             # web/geo/mundo.json, com os países (Natural Earth)
 
 Saída do primeiro modo: o script `web/js/contornos-ufs.js`, com o objeto `{uf: {d: caminho SVG, c: [x, y], l: largura}}`
@@ -23,6 +24,7 @@ import urllib.request
 
 URL = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=UF"
 URL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/estados/{codigo}?formato=application/vnd.geo%2Bjson&qualidade=intermediaria&intrarregiao=municipio"
+URL_BRASIL_MUNICIPIOS = "https://servicodados.ibge.gov.br/api/v3/malhas/paises/BR?formato=application/vnd.geo%2Bjson&qualidade=minima&intrarregiao=municipio"
 URL_MUNDO = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson"
 URL_NOMES = "https://servicodados.ibge.gov.br/api/v1/localidades/estados/{codigo}/municipios"
 SIGLAS = {
@@ -36,6 +38,8 @@ AREA_MINIMA = 12   # ilhas menores que isso (unidades²) somem
 LARGURA_MUNDO = 2400         # unidades do desenho do mundo (360 graus de longitude)
 TOLERANCIA_MUNDO = 0.7       # unidades do desenho (cerca de 0,1 grau)
 AREA_MINIMA_MUNDO = 1.5      # ilhas menores que isso somem, menos a maior de cada país
+LARGURA_BRASIL_MUNICIPIOS = 1000   # todos os municípios num desenho só, nas mesmas coordenadas dos estados: pouco detalhe, porque o zoom troca pelo desenho do estado
+TOLERANCIA_BRASIL_MUNICIPIOS = 0.35
 LARGURA_MUNICIPIOS = 4000    # unidades do desenho de cada UF: o mapa dá zoom, então os municípios têm mais resolução
 TOLERANCIA_MUNICIPIOS = 1.0  # em unidades do desenho (cerca de 200 m): os municípios são pequenos, simplifica pouco
 
@@ -98,12 +102,14 @@ def caminho(anel):
     return partes[0] + " ".join(deltas).replace(" -", "-") + "z"
 
 
-def converter(dados, chave_de, largura=LARGURA, tolerancia=TOLERANCIA, area_minima=AREA_MINIMA, latitude=None):
+def converter(dados, chave_de, largura=LARGURA, tolerancia=TOLERANCIA, area_minima=AREA_MINIMA, latitude=None, enquadramento=None):
     """(largura, altura, {chave: {"d": caminho, "c": [x, y], "l": largura}}) de uma malha GeoJSON do IBGE.
 
-    `latitude` é a latitude que dá a escala da longitude (padrão: o meio da malha)."""
-    lons = [p[0] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
-    lats = [p[1] for f in dados["features"] for anel in aneis(f["geometry"]) for p in anel]
+    `latitude` é a latitude que dá a escala da longitude (padrão: o meio da malha). `enquadramento` é outra malha cuja
+    extensão define o desenho (esquerda, topo e escala): assim duas malhas do mesmo país caem nas mesmas coordenadas."""
+    base = enquadramento or dados
+    lons = [p[0] for f in base["features"] for anel in aneis(f["geometry"]) for p in anel]
+    lats = [p[1] for f in base["features"] for anel in aneis(f["geometry"]) for p in anel]
     fator = math.cos(math.radians((min(lats) + max(lats)) / 2 if latitude is None else latitude))  # um grau de longitude vale menos que um de latitude
     esquerda, topo = min(lons), max(lats)
     escala = largura / ((max(lons) - esquerda) * fator)
@@ -151,6 +157,25 @@ def gerar_municipios(pasta, baixar_malha=baixar, baixar_nomes=baixar):
             arquivo.write(conteudo)
         tamanhos[sigla] = len(conteudo.encode("utf-8"))
     return tamanhos
+
+
+def gerar_brasil_municipios(pasta, baixar_malha=baixar, baixar_nomes=baixar):
+    """Grava `<pasta>/brasil.json`: os ~5,6 mil municípios no mesmo desenho do Brasil (as mesmas coordenadas dos contornos
+    das UFs em contornos-ufs.js), com `{"w", "h", "m": {IBGE: caminho}, "c": {IBGE: [x, y] do centro}, "n": {IBGE: nome}}`. Devolve o tamanho em bytes."""
+    os.makedirs(pasta, exist_ok=True)
+    largura, altura, formas = converter(
+        baixar_malha(URL_BRASIL_MUNICIPIOS), lambda f: f["properties"]["codarea"],
+        largura=LARGURA_BRASIL_MUNICIPIOS, tolerancia=TOLERANCIA_BRASIL_MUNICIPIOS, area_minima=0, latitude=-15,
+        enquadramento=baixar_malha(URL))   # o enquadramento é o das UFs: os municípios caem em cima dos contornos
+    nomes = {}
+    for codigo in sorted(SIGLAS):
+        nomes.update({str(m["id"]): m["nome"] for m in baixar_nomes(URL_NOMES.format(codigo=codigo))})
+    conteudo = json.dumps({"w": largura, "h": altura, "m": {c: f["d"] for c, f in sorted(formas.items())},
+                           "c": {c: f["c"] for c, f in sorted(formas.items())},
+                           "n": {c: nomes[c] for c in sorted(formas) if c in nomes}}, separators=(",", ":"), ensure_ascii=False)
+    with open(os.path.join(pasta, "brasil.json"), "w", encoding="utf-8") as arquivo:
+        arquivo.write(conteudo)
+    return len(conteudo.encode("utf-8"))
 
 
 def miller(lon, lat):
@@ -207,6 +232,10 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--mundo":
         pasta = sys.argv[2] if len(sys.argv) > 2 else "web/geo"
         print(f"{pasta}/mundo.json: {gerar_mundo(pasta) / 1024:.0f} KB", file=sys.stderr)
+        return
+    if len(sys.argv) > 1 and sys.argv[1] == "--brasil":
+        pasta = sys.argv[2] if len(sys.argv) > 2 else "web/geo"
+        print(f"{pasta}/brasil.json: {gerar_brasil_municipios(pasta) / 1024:.0f} KB", file=sys.stderr)
         return
     if len(sys.argv) > 1 and sys.argv[1] == "--municipios":
         pasta = sys.argv[2] if len(sys.argv) > 2 else "web/geo"

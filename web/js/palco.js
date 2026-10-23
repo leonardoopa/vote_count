@@ -18,6 +18,8 @@ function mostrarVista(vista) {
   $("palco").dataset.vista = vista;
   if (vista !== "uf") { clearTimeout(mun.timer); mun.seq++; }
   if (vista !== "mundo") { clearTimeout(mundo.timer); mundo.seq++; }
+  if (vista !== "brasil") { clearTimeout(bm.timer); bm.seq++; }
+  if (vista === "brasil") garantirCamadaDosMunicipios();
   if (vista === "uf") {
     mun.aberto = true;
     $("mapa-mun-abrir").hidden = true;
@@ -31,17 +33,12 @@ function mostrarVista(vista) {
     carregarMundo();
   }
   pintarTrilha();
+  pintarPainelDoCandidato();
 }
 
 function irParaVista(vista) {
   if (vista === "brasil") voltarAoBrasil();
   else { if (vista === "mundo") mundo.pais = ""; mostrarVista(vista); }
-}
-
-/* Em tela estreita o placar fica antes dos mapas: avisa quem escolheu um estado fora do mapa (disputas, lista). */
-function rolarAteOPlacar() {
-  if (!matchMedia("(max-width: 1179.98px)").matches) return;   // em tela larga o placar já está ao lado do mapa
-  $("filtros").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
 }
 
 /* Brasil → Estado: o mapa dos estados dá zoom até o escolhido (os outros apagam) e então o mapa dos municípios entra. */
@@ -55,7 +52,8 @@ function entrarNaUf(uf) {
   if (palco.vista !== "brasil" || !svg || !caminho) { concluir(); return; }
   svg.classList.add("focando");
   caminho.classList.add("alvo");
-  const [largura, altura] = MAPA_TAMANHO;
+  marcarMunicipiosDaUf(uf, true);
+  const [largura, altura] = MAPA_VISTA;
   animarViewBox(svg, janelaQueEnquadra(caminho.getBBox(), largura, altura, 1.25), { aoTerminar: concluir });
 }
 
@@ -68,7 +66,8 @@ function voltarAoBrasil() {
   if (!svg) return;
   svg.classList.remove("focando");
   for (const caminho of mapaSvg.porUf.values()) caminho.classList.remove("alvo");
-  const [largura, altura] = MAPA_TAMANHO;
+  marcarMunicipiosDaUf(estado.uf, false);
+  const [largura, altura] = MAPA_VISTA;
   animarViewBox(svg, { x: 0, y: 0, width: largura, height: altura });
 }
 

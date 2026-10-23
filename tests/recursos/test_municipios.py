@@ -18,7 +18,8 @@ class ResumirCidade(unittest.TestCase):
         resumo = municipios.resumir_cidade(arquivo(DOIS, secoes=(100, 80)))
         self.assertEqual(resumo, {
             "situacao": "lider", "apurado": 80.0, "final": False, "margem": 20.0, "margem_votos": 200,
-            "lider": {"nome": "ANA", "partido": "PT", "percentual": 60.0, "eleito": False, "segundo_turno": False},
+            "lider": {"numero": "13", "nome": "ANA", "partido": "PT", "percentual": 60.0, "votos": 600, "eleito": False, "segundo_turno": False},
+            "segundo": {"numero": "22", "nome": "BIA", "partido": "PL", "percentual": 40.0, "votos": 400},
         })
 
     def test_zerado_e_empate(self):
@@ -78,3 +79,36 @@ class Foco(unittest.TestCase):
         ibge = {str(i): str(1000000 + i) for i in range(200)}
         pedido = ",".join(ibge.values())
         self.assertEqual(len(municipios.codigos_em_foco(pedido, ibge)), municipios.MAX_FOCO)
+
+
+class DoBrasil(unittest.TestCase):
+    def test_resumo_compacto_traz_o_sqcand_para_a_foto(self):
+        dados = arquivo(DOIS, secoes=(100, 80))
+        dados["carg"][0]["agr"][0]["par"][0]["cand"][0]["sqcand"] = "111"
+        resumo = municipios.resumir_cidade_do_brasil(dados)
+        self.assertEqual(resumo["lider"], {"numero": "13", "nome": "ANA", "partido": "PT", "percentual": 60.0, "sqcand": "111"})
+        self.assertEqual((resumo["segundo"]["numero"], resumo["segundo"]["sqcand"], resumo["margem_votos"]), ("22", None, 200))
+
+    def test_ordem_espalhada_pega_uma_cidade_de_cada_estado_por_vez(self):
+        self.assertEqual(municipios.ordem_espalhada({"ac": ["a1", "a2", "a3"], "al": ["b1"], "am": ["c1", "c2"]}), ["a1", "b1", "c1", "a2", "c2", "a3"])
+        self.assertEqual(municipios.ordem_espalhada({}), [])
+
+    def test_montar_brasil_em_listas_curtas(self):
+        def cidade(partido, pct, numero, margem=100, situacao="lider"):
+            resumo = {"situacao": situacao, "apurado": 90.0, "final": False}
+            if situacao == "lider":
+                resumo.update(lider={"numero": numero, "nome": partido, "partido": partido, "percentual": pct, "sqcand": "1"},
+                              segundo={"numero": "99", "nome": "OUTRO", "partido": "XX", "percentual": 100 - pct, "sqcand": None}, margem_votos=margem)
+            return (resumo, 1000.0, 200)
+        resumos = {"2611606": cidade("PT", 55.0, "13"), "3550308": cidade("PL", 51.0, "22"), "2304400": cidade("PT", 70.0, "13", situacao="zerado"), "1100015": (None, 0, 0)}
+        corpo = municipios.montar_brasil("presidente", resumos, 4, lambda uf, sq: f"foto/{uf}/{sq}", 1010.0)
+        self.assertEqual((corpo["total"], corpo["carregadas"], corpo["idade_s"]), (4, 3, 10))
+        self.assertEqual(set(corpo["cidades"]), {"2611606", "3550308"})     # cidade zerada não pinta
+        self.assertEqual(corpo["cidades"]["2611606"], [0, 55.0, 1, 45.0, 90.0, 100, 0])
+        self.assertEqual(corpo["candidatos"][0], {"numero": "13", "nome": "PT", "partido": "PT", "foto": "foto/pe/1"})
+        # presidente: o mesmo candidato é um só no país; governador: um por UF
+        mesmos = municipios.montar_brasil("presidente", {"2611606": cidade("PT", 55.0, "13"), "3550308": cidade("PT", 60.0, "13")}, 2, lambda uf, sq: None, 0)
+        self.assertEqual(len(mesmos["candidatos"]), 2)   # PT e o "outro"
+        por_uf = municipios.montar_brasil("governador", {"2611606": cidade("PT", 55.0, "13"), "3550308": cidade("PT", 60.0, "13")}, 2, lambda uf, sq: None, 0)
+        self.assertEqual(len(por_uf["candidatos"]), 4)
+

@@ -69,7 +69,7 @@ class Rota(unittest.TestCase):
         self.assertEqual(estado.VARREDOR._grupos, {})
 
     def test_so_presidente_e_governador_dentro_de_um_estado(self):
-        for consulta in ({"cargo": ["senador"], "uf": ["sp"]}, {"cargo": ["presidente"], "uf": ["br"]}, {"cargo": ["x"]},
+        for consulta in ({"cargo": ["senador"], "uf": ["sp"]}, {"cargo": ["senador"], "uf": ["br"]}, {"cargo": ["x"]},
                          {"cargo": ["governador"], "uf": ["sp"], "ambiente": ["../x"]}, {"cargo": ["governador"], "uf": ["sp"], "turno": ["7"]}):
             with self.subTest(consulta=consulta):
                 self.assertEqual(rotas.mapa_municipal(consulta)[0], 400)
@@ -102,6 +102,41 @@ class Rota(unittest.TestCase):
     def test_tse_sem_a_lista_de_cidades(self):
         with mock.patch.object(estado, "CACHE", Cache()), mock.patch.object(cliente, "buscar", return_value=cliente.Resposta(404, None, None)):
             self.assertEqual(rotas.mapa_municipal(self.consulta)[0], 404)
+
+    def com_todos_os_estados(self):
+        """O resumo por UF (que diz quais estados têm arquivo) é um mapa inteiro de consultas ao TSE: aqui, pronto."""
+        resumo = {"ufs": {uf: {"situacao": "lider"} for uf in catalogo.UFS}}
+        return mock.patch.object(respostas, "resumo_do_cargo", return_value=(200, resumo))
+
+    def test_o_pais_inteiro_vai_intercalado_entre_os_estados(self):
+        consulta = {"ambiente": ["simulado"], "cargo": ["presidente"], "uf": ["br"]}
+        with self.com_todos_os_estados():
+            status, corpo = rotas.mapa_municipal(consulta)
+        total = sum(len(tse_falso.cidades_da_uf(uf)) for uf in catalogo.UFS)
+        self.assertEqual((status, corpo["total"], corpo["carregadas"], corpo["cidades"]), (200, total, 0, {}))
+        antes = len(self.pedidos)
+        for _ in range(len(catalogo.UFS)):
+            estado.VARREDOR.passo()
+        ufs_pedidas = {url.split("/dados/")[1].split("/")[0] for url in self.pedidos[antes:]}
+        self.assertEqual(ufs_pedidas, set(catalogo.UFS))   # uma cidade de cada estado nas primeiras buscas
+        with self.com_todos_os_estados():
+            corpo = rotas.mapa_municipal(consulta)[1]
+        self.assertEqual(corpo["carregadas"], len(catalogo.UFS))
+        ibge, linha = next(iter(corpo["cidades"].items()))
+        self.assertEqual(len(linha), 7)
+        self.assertTrue(0 <= linha[0] < len(corpo["candidatos"]) and linha[1] >= linha[3])
+        self.assertEqual({"numero", "nome", "partido", "foto"}, set(corpo["candidatos"][linha[0]]))
+
+    def test_o_pais_so_para_presidente_e_governador_e_com_varredor_ligado(self):
+        self.assertEqual(rotas.mapa_municipal({"ambiente": ["simulado"], "cargo": ["deputado-federal"], "uf": ["br"]})[0], 400)
+        with mock.patch.object(estado, "VARREDOR", Varredor(0)):
+            self.assertEqual(rotas.mapa_municipal({"ambiente": ["simulado"], "cargo": ["presidente"], "uf": ["br"]}), respostas.RECURSO_DESLIGADO)
+
+    def test_governador_no_2_turno_so_varre_os_estados_que_tem_2_turno(self):
+        resumo = {"ufs": {uf: {"situacao": "lider" if uf in ("ac", "al") else "sem_segundo_turno"} for uf in catalogo.UFS}}
+        with mock.patch.object(respostas, "resumo_do_cargo", return_value=(200, resumo)):
+            status, corpo = rotas.mapa_municipal({"ambiente": ["simulado"], "cargo": ["governador"], "uf": ["br"], "turno": ["2"]})
+        self.assertEqual((status, corpo["total"]), (200, len(tse_falso.cidades_da_uf("ac")) + len(tse_falso.cidades_da_uf("al"))))
 
     def test_rota_na_tabela(self):
         self.assertIs(rotas.ROTAS_API["/api/mapa-municipal"], rotas.mapa_municipal)

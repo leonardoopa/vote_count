@@ -219,6 +219,7 @@ async function carregar() {
     if (minha !== sequencia) return;
     semConexao = false;
     if (resposta.ok) renderizar(corpo);
+    else if (estado.turnoPadrao && estado.turno === "2" && estado.cargo !== "presidente") { trocou("turno", "1", { padrao: true }); return; }   // governador sem 2º turno nesta UF: mostra o 1º
     else falhar(corpo.erro);
   } catch {
     if (minha === sequencia) { semConexao = true; falhar("Sem conexão com o servidor. Mantendo o último placar."); atualizarTempo(); }
@@ -248,8 +249,10 @@ function falhar(mensagem) {
   }
 }
 
-function trocou(campo, valor) {
+function trocou(campo, valor, { padrao = false } = {}) {
   const ufAntes = estado.uf;
+  if (campo === "turno" && !padrao) estado.turnoPadrao = false;   // escolha da pessoa vale daqui para frente
+  if (campo === "cargo" && estado.turnoPadrao) estado.turno = "2";   // trocar de cargo volta ao padrão (o 1º só entrou de reserva)
   estado[campo] = valor;
   estado.top = TOP_INICIAL;
   ultimo = null;

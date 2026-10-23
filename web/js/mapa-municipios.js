@@ -21,6 +21,10 @@ function resumoDaCidade(r) {
 function dicaDaCidade(ibge) {
   const r = mun.dados && mun.dados.cidades[ibge];
   const nome = (munGeo[estado.uf].n || {})[ibge] || (r && r.nome) || "Município";
+  if (r && r.situacao === "lider" && r.segundo) {
+    const comFoto = (c) => ({ ...c, foto: fotoPeloNumero(c.numero) });
+    return cartaoDoLugar({ selo: estado.uf.toUpperCase(), titulo: nome, subtitulo: `${pct(r.apurado)} das seções`, candidatos: [comFoto(r.lider), comFoto(r.segundo)], cor: corDoPartido(r.lider.partido) });
+  }
   return [criar("strong", {}, nome), criar("span", {}, r ? resumoDaCidade(r) : "Placar ainda não carregado: o servidor busca as cidades aos poucos.")];
 }
 
@@ -51,6 +55,7 @@ function construirMapaMun() {
     grupo.append(caminho);
   }
   svg.append(grupo, rotulos);
+  caixa.style.setProperty("--proporcao", String(geo.w / geo.h));
   caixa.replaceChildren(svg);
   const caixas = new Map();               // retângulo de cada cidade no desenho, para saber o que está na tela
   for (const [ibge, caminho] of caminhos) caixas.set(ibge, caminho.getBBox());

@@ -13,6 +13,7 @@ arquivos. Para não aumentar o risco com o TSE (100 req/s por IP, bloqueio de 10
 Este módulo não conhece nenhum recurso: cada um registra um grupo de trabalhos com a função que
 transforma o arquivo do TSE no resumo que guarda.
 """
+import math
 import threading
 import time
 
@@ -26,6 +27,9 @@ LIMITE_404_SEGUIDOS = 3
 ESPERA_FALHA_S = 30      # erro de rede ou 5xx: tenta o mesmo arquivo de novo depois disto
 MAX_GRUPOS = 64
 FOCO_S = 90              # tempo que uma prioridade dura se a página não a renovar
+BUSCAS_POR_AJUDANTE = 3  # acima de 5 buscas por segundo entram mais threads: uma só não passa de ~3 por segundo (a rede demora)
+MAX_TRABALHADORES = 8
+RESERVA_S = 60           # a busca que uma thread começou fica reservada por isto, para outra não pegar o mesmo arquivo
 
 
 class Trabalho:
@@ -58,12 +62,23 @@ class Varredor:
         self._grupos = {}
         self._trava = threading.RLock()
         self._thread = None
+        self._ajudantes = []    # threads a mais, só quando o teto por segundo pede (veja `trabalhadores`)
         self._pausa_ate = 0.0
         self._seguidos_404 = 0
 
     @property
     def ligado(self):
         return self.por_segundo > 0
+
+    @property
+    def trabalhadores(self):
+        """Quantas threads buscam ao mesmo tempo: uma até 5 buscas por segundo; acima disso, o bastante para o teto ser atingível.
+
+        O teto continua valendo para o conjunto: cada thread espera `trabalhadores / por_segundo` entre uma busca e a próxima.
+        """
+        if self.por_segundo <= 5:
+            return 1
+        return min(MAX_TRABALHADORES, math.ceil(self.por_segundo / BUSCAS_POR_AJUDANTE))
 
     def pedir(self, nome, fabrica):
         """Marca o grupo como em uso (criando-o com `fabrica()` se for novo) e garante que a thread esteja rodando.
@@ -82,6 +97,11 @@ class Varredor:
             if self._thread is None or not self._thread.is_alive():
                 self._thread = threading.Thread(target=self._rodar, name="varredor", daemon=True)
                 self._thread.start()
+            self._ajudantes = [t for t in self._ajudantes if t.is_alive()]
+            while len(self._ajudantes) < self.trabalhadores - 1:
+                ajudante = threading.Thread(target=self._rodar, args=(False,), name="varredor-ajudante", daemon=True)
+                self._ajudantes.append(ajudante)
+                ajudante.start()
             return grupo
 
     def priorizar(self, grupo, chaves):
@@ -116,6 +136,7 @@ class Varredor:
                 return False
             _, _, grupo, trabalho = min(candidatos, key=lambda c: c[:2])
             etag = trabalho.etag
+            trabalho.proxima = agora + RESERVA_S   # reservado: outra thread não pega o mesmo arquivo enquanto a rede responde
         resposta = (self.buscar or cliente.buscar)(trabalho.url, etag)  # fora da trava: a rede é lenta
         self._registrar(grupo, trabalho, resposta)
         return True
@@ -145,12 +166,15 @@ class Varredor:
             else:
                 trabalho.proxima = agora + ESPERA_FALHA_S
 
-    def _rodar(self):
-        espera = 1.0 / self.por_segundo
+    def _rodar(self, principal=True):
+        espera = self.trabalhadores / self.por_segundo
         while True:
             with self._trava:
                 agora = self.relogio()
                 if not any(agora - g.ultimo_pedido < OCIOSO_S for g in self._grupos.values()):
-                    self._thread = None
+                    if principal:
+                        self._thread = None
                     return
-            self.dormir(espera if self.passo() else 1.0)
+            inicio = self.relogio()
+            buscou = self.passo()
+            self.dormir(max(0.0, espera - (self.relogio() - inicio)) if buscou else 1.0)   # a rede já gastou parte da espera

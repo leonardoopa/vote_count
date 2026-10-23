@@ -183,6 +183,15 @@ def foram_ao_segundo_turno(dados):
     return any(situacao_do_candidato(cand) == "segundo_turno" for cand in leitura.candidatos(dados))
 
 
+def _com_fotos(resumo, dados, ambiente, cargo, uf, turno):
+    """Põe o endereço da foto no líder e no segundo de um resumo de UF (o TSE guarda a foto pelo `sqcand`)."""
+    fotos = {cand["n"]: catalogo.url_foto(ambiente, cargo, uf, turno, cand.get("sqcand")) for cand in leitura.candidatos(dados)}
+    for papel in ("lider", "segundo"):
+        if resumo.get(papel):
+            resumo[papel]["foto"] = fotos.get(resumo[papel]["numero"])
+    return resumo
+
+
 def resumo_por_uf(obter, ambiente, cargo, turno, pausa=PAUSA_S, prazo=PRAZO_S, agora=time.time):
     """Mapa do Brasil: (corpo, None) ou (None, (status do TSE, mensagem para o caso de 404)).
 
@@ -227,7 +236,7 @@ def resumo_por_uf(obter, ambiente, cargo, turno, pausa=PAUSA_S, prazo=PRAZO_S, a
         elif resposta is None or resposta[0] is None:
             ufs[uf] = {"situacao": "sem_dados"}
         else:
-            ufs[uf] = resumir_uf(resposta[0], com_votos=presidente, vagas=vagas)
+            ufs[uf] = _com_fotos(resumir_uf(resposta[0], com_votos=presidente, vagas=vagas), resposta[0], ambiente, cargo, uf, turno)
             mais_velho = max(mais_velho, agora() - resposta[2])
             for cand in leitura.candidatos(resposta[0]):
                 nomes.setdefault(cand["n"], (cand.get("nmu") or cand["nm"], cand["partido"]))
@@ -236,7 +245,7 @@ def resumo_por_uf(obter, ambiente, cargo, turno, pausa=PAUSA_S, prazo=PRAZO_S, a
     if presidente:
         resposta = respostas.get("zz")
         if resposta is not None and resposta[0] is not None:
-            exterior = resumir_uf(resposta[0], com_votos=True)
+            exterior = _com_fotos(resumir_uf(resposta[0], com_votos=True), resposta[0], ambiente, cargo, "zz", turno)
             mais_velho = max(mais_velho, agora() - resposta[2])
             for cand in leitura.candidatos(resposta[0]):
                 nomes.setdefault(cand["n"], (cand.get("nmu") or cand["nm"], cand["partido"]))

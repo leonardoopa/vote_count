@@ -1,10 +1,14 @@
 """O HTTP: escolhe a rota pelo caminho e envia a resposta."""
+import gzip
 import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from contador.servidor import estaticos
 from contador.servidor.rotas import ROTAS_API, ROTAS_ARQUIVO
+
+
+GZIP_MINIMO = 2048   # respostas JSON menores que isso saem como estão
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -27,7 +31,10 @@ class Handler(BaseHTTPRequestHandler):
         consulta = parse_qs(url.query)
         if url.path in ROTAS_API:
             status, corpo = ROTAS_API[url.path](consulta)
-            self._enviar(status, "application/json; charset=utf-8", json.dumps(corpo, ensure_ascii=False).encode())
+            dados, extras = json.dumps(corpo, ensure_ascii=False).encode(), {}
+            if len(dados) > GZIP_MINIMO and "gzip" in (self.headers.get("Accept-Encoding") or ""):   # o mapa do país passa de 100 KB
+                dados, extras = gzip.compress(dados, 5, mtime=0), {"Content-Encoding": "gzip", "Vary": "Accept-Encoding"}
+            self._enviar(status, "application/json; charset=utf-8", dados, extras)
         elif url.path in ROTAS_ARQUIVO:
             status, tipo, corpo, extras = ROTAS_ARQUIVO[url.path](consulta, self.headers)
             self._enviar(status, tipo, corpo, extras)

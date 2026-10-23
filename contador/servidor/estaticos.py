@@ -57,13 +57,13 @@ def service_worker(consulta, cabecalhos=None):
 
 
 GEO = WEB / "geo"  # desenhos dos municípios, um arquivo por UF, e o do mundo (tools/gerar_mapa.py --municipios e --mundo)
-ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2}|mundo)\.json$")
+ARQUIVO_GEO = re.compile(r"^/geo/([a-z]{2}|mundo|brasil)\.json$")
 
 
 def desenho_dos_municipios(caminho, cabecalhos=None):
     """(status, tipo, corpo, extras) do arquivo geo/<uf>.json, ou None se o caminho não é de um desenho."""
     achado = ARQUIVO_GEO.match(caminho)
-    if not achado or (achado[1] != "mundo" and achado[1] not in catalogo.UFS):
+    if not achado or (achado[1] not in ("mundo", "brasil") and achado[1] not in catalogo.UFS):
         return None
     arquivo = GEO / f"{achado[1]}.json"
     if not arquivo.is_file():

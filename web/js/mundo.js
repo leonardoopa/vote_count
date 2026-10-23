@@ -20,6 +20,11 @@ function resumoDoPais(r) {
 
 function dicaDoPais(iso) {
   const r = entradaDoPais(iso), locais = mundo.dados && mundo.dados.locais[iso];
+  if (r && r.situacao === "lider") {   // o mesmo cartão do mapa dos estados: selo do lugar e os dois primeiros com foto
+    const comFoto = (c) => ({ ...c, foto: (mundo.dados.fotos || {})[c.numero] });
+    const onde = r.locais && r.locais !== r.carregados ? ` · ${inteiro(r.carregados)} de ${inteiro(r.locais)} locais` : "";
+    return cartaoDoLugar({ selo: iso, titulo: nomeDoPais(iso), subtitulo: `${pct(r.apurado)} das seções${onde}`, candidatos: [r.lider, r.segundo].filter(Boolean).map(comFoto), cor: corDoPartido(r.lider.partido) });
+  }
   const texto = r ? resumoDoPais(r)
     : locais ? `${inteiro(locais)} ${locais > 1 ? "locais" : "local"} de votação: ainda não carregado`
       : "Sem urna do Brasil neste país";
@@ -55,6 +60,7 @@ function construirMundo() {
     grupo.append(caminho);
   }
   svg.append(grupo, pontos, rotulos);
+  caixa.style.setProperty("--proporcao", String(geo.w / geo.h));
   caixa.replaceChildren(svg);
   const caixas = new Map();
   for (const [iso, caminho] of caminhos) caixas.set(iso, caminho.getBBox());

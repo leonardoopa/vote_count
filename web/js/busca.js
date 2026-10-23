@@ -15,6 +15,7 @@ function irParaCidade({ uf, codigo }) {
 function destacarCandidato(posicao) {
   const alvo = $("ranking").children[posicao - 1];
   if (!alvo) return;
+  irParaTela("placar");   // em celular a lista de candidatos é a tela "Placar"
   alvo.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   alvo.focus({ preventScroll: true });
 }

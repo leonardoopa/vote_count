@@ -1,6 +1,7 @@
 """Testes de `contador/servidor/estaticos.py`."""
 import http.client
 import json
+import re
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -24,6 +25,19 @@ class Desenhos(unittest.TestCase):
             self.assertTrue(all(isinstance(nome, str) and nome for nome in desenho["n"].values()))
             self.assertTrue(all(d.startswith("M") and d.endswith("z") for d in desenho["m"].values()))
             self.assertTrue(all(len(c) == 7 and c.isdigit() for c in desenho["m"]))  # código IBGE do município
+
+    def test_o_desenho_do_brasil_tem_todos_os_municipios_nas_coordenadas_dos_estados(self):
+        status, tipo, corpo, extras = estaticos.desenho_dos_municipios("/geo/brasil.json")
+        self.assertEqual((status, tipo), (200, "application/json; charset=utf-8"))
+        desenho = json.loads(corpo)
+        self.assertEqual(set(desenho), {"w", "h", "m", "c", "n"})
+        self.assertGreater(len(desenho["m"]), 5500)
+        self.assertEqual(set(desenho["c"]), set(desenho["m"]))
+        self.assertEqual(set(desenho["n"]), set(desenho["m"]))
+        # o canvas da página desenha esta camada em escala MAPA_TAMANHO[0] / w sobre os contornos dos estados (hoje 1: as mesmas coordenadas)
+        mapa_ufs = (estaticos.WEB / "js" / "contornos-ufs.js").read_text(encoding="utf-8")
+        largura, altura = (int(n) for n in re.search(r"MAPA_TAMANHO = \[(\d+), (\d+)\]", mapa_ufs).groups())
+        self.assertEqual((desenho["w"] / largura, desenho["h"] / altura), (1, 1))
 
     def test_o_desenho_cobre_os_municipios_do_tse_menos_os_muito_novos(self):
         # em 2026 o desenho do IBGE ainda não traz 1 município de MT; os demais têm todos o seu contorno

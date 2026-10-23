@@ -65,9 +65,10 @@ const estado = {
   cargo: params.get("cargo") in CARGOS ? params.get("cargo") : "presidente",
   uf: (params.get("uf") || "").toLowerCase(),
   municipio: /^\d{5}$/.test(params.get("municipio") || "") ? params.get("municipio") : "",
-  turno: params.get("turno") === "2" ? "2" : "1",
+  turno: params.get("turno") === "1" ? "1" : "2",   // quem entra sem escolher turno cai no 2º, que é o que as pessoas vêm ver
   ambiente: params.get("ambiente") === "simulado" ? "simulado" : "oficial",
   top: TOP_INICIAL,
+  turnoPadrao: !params.has("turno"),   // o turno veio do padrão, não de uma escolha: se o cargo não tiver 2º turno ainda, mostra o 1º
 };
 
 /* Parâmetros da API para a seleção atual (sem `top`). `extra` sobrescreve ou acrescenta campos. */

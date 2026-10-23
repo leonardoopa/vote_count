@@ -23,9 +23,7 @@ function sincronizarFiltros() {
   $("turno").value = estado.turno;
   $("ambiente").value = estado.ambiente;
   $("rotulo-cidade").hidden = estado.uf === "br";
-  const q = new URLSearchParams({ cargo: estado.cargo, uf: estado.uf, turno: estado.turno, ambiente: estado.ambiente });
-  if (estado.municipio) q.set("municipio", estado.municipio);
-  history.replaceState(null, "", "?" + q);
+  atualizarEndereco();
 }
 
 const semAcento = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();

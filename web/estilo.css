@@ -281,7 +281,7 @@ html { scroll-padding-top: calc(var(--anuncio-altura, 0px) + 12px); }
 .mais-votados .meta .eleito { color: var(--good); font-weight: 600; }
 .mapa-svg { display: flex; justify-content: center; margin: 4px 0 8px; }
 .mapa-svg svg { display: block; width: 100%; max-width: 520px; height: auto; }
-.mapa-svg path { stroke: var(--surface); stroke-width: 1.5px; stroke-linejoin: round; cursor: pointer; transition: opacity 0.15s; }
+.mapa-svg path { stroke: var(--surface); stroke-width: 1.5px; stroke-linejoin: round; cursor: pointer; transition: opacity 0.4s, fill 0.9s ease, fill-opacity 0.9s ease; }
 .mapa-svg path:hover { opacity: 0.78; }
 .mapa-svg path.atual { stroke: var(--ink); stroke-width: 3px; }
 .mapa-svg text { font: 600 22px/1 system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--ink); pointer-events: none; paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
@@ -331,4 +331,117 @@ html { scroll-padding-top: calc(var(--anuncio-altura, 0px) + 12px); }
 @media (prefers-reduced-motion: reduce) {
   .ao-vivo.vivo::before { animation: none; }
   .painel, .medidor > i, .barra { transition: none; }
+}
+
+/* ---- Topo: marca, abas por cargo e botões ---- */
+.cabecalho { align-items: center; gap: 10px 16px; }
+.marca { min-width: 0; }
+.abas {
+  display: flex; gap: 2px; padding: 3px; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+}
+.abas::-webkit-scrollbar { display: none; }
+.abas[hidden] { display: none; }
+.abas button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; white-space: nowrap;
+  padding: 6px 14px; border-radius: 999px; font: inherit; font-size: 0.9375rem; font-weight: 600;
+}
+.abas button:hover { color: var(--ink); }
+.abas button[aria-pressed="true"] { background: var(--ink); color: var(--page); }
+.abas button:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.sub-abas { margin-top: 10px; width: max-content; }
+.sub-abas button { padding: 4px 12px; font-size: 0.8125rem; }
+.cabecalho-direita { flex: 1 1 auto; justify-content: flex-end; }
+
+/* ---- Duelo: os dois primeiros colocados ---- */
+.duelo { margin: 0 0 16px; padding: 14px 16px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.duelo[hidden] { display: none; }
+.duelo-titulo { margin: 0 0 10px; text-align: center; font-size: clamp(1.05rem, 1.6vw + 0.6rem, 1.5rem); font-weight: 650; letter-spacing: -0.01em; }
+.duelo-linha { display: flex; justify-content: space-between; align-items: center; gap: 12px 24px; }
+.duelo-lado { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.duelo-lado.direita { flex-direction: row-reverse; text-align: right; }
+.duelo-foto .foto { width: 72px; height: 72px; font-size: 1.25rem; }
+.duelo-nome { font-weight: 650; font-size: 1.0625rem; overflow-wrap: anywhere; }
+.duelo-partido { display: flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: 0.8125rem; }
+.duelo-lado.direita .duelo-partido { justify-content: flex-end; }
+.duelo-pct { font-size: clamp(1.7rem, 2.4vw + 0.8rem, 2.6rem); font-weight: 650; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.duelo-votos { color: var(--ink-2); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.duelo-barra { position: relative; height: 14px; margin: 12px 0 6px; border-radius: 7px; background: var(--track); }
+.duelo-barra i { position: absolute; top: 0; bottom: 0; border-radius: 7px; transition: width 0.8s ease; }
+.duelo-barra i.esq { left: 0; }
+.duelo-barra i.dir { right: 0; }
+.duelo-barra b { position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); }
+.duelo-rodape { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 0.75rem; }
+@media (max-width: 640px) {
+  .abas button { padding: 6px 10px; font-size: 0.875rem; }
+  .duelo-linha { display: grid; grid-template-columns: 1fr 1fr; }
+  .duelo-lado, .duelo-lado.direita { flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+  .duelo-lado.direita .duelo-partido, .duelo-partido { justify-content: center; }
+  .duelo-foto .foto { width: 56px; height: 56px; }
+  .duelo-rodape span:last-child { display: none; }
+}
+
+/* ---- Compartilhar ---- */
+dialog.estreita { width: min(560px, calc(100vw - 24px)); }
+.sub-titulo { margin: 14px 0 2px; font-size: 0.9375rem; font-weight: 600; }
+.campo-copiar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.campo-copiar input { flex: 1 1 14rem; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: inherit; font-size: 0.875rem; }
+#compartilhar-codigo { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); font: 0.8125rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+
+/* ---- Página incorporada (?embed=1): só o placar ---- */
+.so-incorporado { display: none; }
+html.embed .so-incorporado { display: block; }
+html.embed .pagina { max-width: 720px; padding: 12px 12px 20px; }
+html.embed :is(.anuncio, .abas, .filtros, .cabecalho-direita .botao, .painel > .coluna.centro, .painel > .coluna.dir, #indicadores, #evo, #exportar, #mais) { display: none; }
+html.embed .cabecalho { margin-bottom: 8px; }
+html.embed h1 { font-size: 1.125rem; }
+html.embed .painel { display: block; }
+html.embed .coluna.esq { display: flex; flex-direction: column; gap: 12px; }
+html.embed .rodape p:nth-child(2) { display: none; }
+
+/* ---- Painel em colunas ----
+   Até 1179 px: uma coluna só, na mesma ordem de sempre (os invólucros somem e `order` põe cada bloco no lugar). */
+.coluna { display: contents; }
+@media (max-width: 1179.98px) {
+  .painel { display: flex; flex-direction: column; }
+  #heroi { order: 1; } #resumo { order: 2; } #indicadores { order: 3; } #trilha { order: 4; } #mundo { order: 5; } #mapa { order: 6; }
+  #mapa-mun { order: 7; } #regioes { order: 8; } #hemiciclo { order: 9; } #maisvotados { order: 10; } #evo { order: 11; }
+  #lista { order: 12; } #feed { order: 13; } #disputas { order: 14; }
+}
+@media (min-width: 1180px) {
+  .pagina { max-width: 1480px; }
+  .painel { display: flex; align-items: flex-start; gap: 16px; }
+  .painel .coluna { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .painel .coluna > * { margin: 0; }
+  .painel .coluna.esq { flex: 0 0 360px; }
+  .painel .coluna.centro { flex: 1 1 0; }
+  .painel .coluna.dir { flex: 0 0 320px; }
+  .painel .coluna:not(:has(> :not([hidden]))) { display: none; }
+  /* o ranking cabe na coluna estreita com o mesmo desenho do celular */
+  .painel .coluna .linha { grid-template-columns: 1.6rem minmax(0, 1fr) auto; grid-template-areas: "pos quem pct" "pos quem votos" ". trilho trilho"; align-items: start; row-gap: 6px; padding: 10px 8px; }
+  .painel .coluna .linha > .pos { grid-area: pos; }
+  .painel .coluna .linha > .quem { grid-area: quem; }
+  .painel .coluna .linha > .trilho { grid-area: trilho; }
+  .painel .coluna .linha > .votos { grid-area: votos; color: var(--ink-2); font-size: 0.8125rem; }
+  .painel .coluna .linha > .pct { grid-area: pct; }
+  .painel .centro .mapa-svg svg { max-width: 720px; }
+  .painel .coluna.esq .heroi .valor { font-size: 2.75rem; }
+}
+
+/* ---- Palco: um mapa só, três vistas ---- */
+#palco[data-vista="brasil"] > :is(#mapa-mun, #mundo),
+#palco[data-vista="uf"] > :is(#mapa, #mundo),
+#palco[data-vista="mundo"] > :is(#mapa, #mapa-mun) { display: none; }
+#palco > :is(#mapa, #mapa-mun, #mundo):not([hidden]) { animation: entrar-mapa 0.5s ease both; }
+@keyframes entrar-mapa { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+/* o estado escolhido fica e os outros apagam enquanto o zoom corre */
+.mapa-svg svg.focando path:not(.alvo) { opacity: 0.1; }
+.mapa-svg svg.focando text { opacity: 0; transition: opacity 0.3s; }
+/* estado que mudou de cor pisca: a apuração andando */
+.mapa-svg path.mudou { animation: cintilar 1.6s ease-out; }
+@keyframes cintilar { 0% { filter: brightness(2.1) saturate(1.4); } 100% { filter: none; } }
+@media (prefers-reduced-motion: reduce) {
+  #palco > :is(#mapa, #mapa-mun, #mundo):not([hidden]) { animation: none; }
+  .mapa-svg path.mudou { animation: none; }
+  .mapa-svg path { transition: none; }
 }

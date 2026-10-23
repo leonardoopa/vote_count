@@ -51,6 +51,25 @@ function ativarZoom(caixa, svg, largura, altura, { maximo = 40, aoParar = () => 
     aplicar();
   };
   const reiniciar = () => { Object.assign(vista, { x: 0, y: 0, k: 1 }); aplicar(); };
+  /* Dá zoom até um retângulo do desenho (`c`: x, y, width, height), com animação. O zoom cresce em proporção, então a
+     velocidade parece constante. Quem prefere menos movimento recebe o resultado direto. */
+  const irPara = (c, { margem = 1.5, duracao = 750, aoTerminar = () => {} } = {}) => {
+    const k = Math.min(maximo, Math.max(1, Math.min(largura / (c.width * margem), altura / (c.height * margem))));
+    const alvo = { k, x: c.x + c.width / 2 - largura / k / 2, y: c.y + c.height / 2 - altura / k / 2 };
+    const de = { ...vista };
+    if (duracao <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) { Object.assign(vista, alvo); aplicar(); aoTerminar(); return; }
+    const inicio = performance.now();
+    const passo = (agora) => {
+      const t = Math.min(1, (agora - inicio) / duracao), e = 1 - Math.pow(1 - t, 3);   // desacelera no fim
+      vista.k = de.k * Math.pow(alvo.k / de.k, e);
+      vista.x = de.x + (alvo.x - de.x) * e;
+      vista.y = de.y + (alvo.y - de.y) * e;
+      aplicar();
+      if (t < 1) requestAnimationFrame(passo);
+      else aoTerminar();
+    };
+    requestAnimationFrame(passo);
+  };
 
   svg.addEventListener("wheel", (e) => {
     if (!(e.ctrlKey || e.metaKey)) {      // rolagem comum: a página rola e o mapa só lembra como ampliar (no máximo a cada 8 s)
@@ -122,7 +141,7 @@ function ativarZoom(caixa, svg, largura, altura, { maximo = 40, aoParar = () => 
   });
 
   return {
-    vista, ampliar, reiniciar,
+    vista, ampliar, reiniciar, irPara,
     unidadesPorPixel: () => largura / vista.k / (svg.getBoundingClientRect().width || 1),
     destruir() { clearTimeout(parou); clearTimeout(lembreteTimer); },
   };
@@ -153,4 +172,27 @@ function rotularMapa(mapa, nomes, largura, altura, { kMinimo = 2, maximo = 150, 
     }
     texto.style.fontSize = `${12 * porPixel}px`;     // 12 px na tela, qualquer que seja o zoom
   }
+}
+
+/* Anima o viewBox de um svg até a janela `para` ({x, y, width, height}): é o zoom do mapa do Brasil ao entrar num estado.
+   Quem prefere menos movimento recebe o resultado direto. */
+function animarViewBox(svg, para, { duracao = 650, aoTerminar = () => {} } = {}) {
+  const [x0, y0, l0, a0] = svg.getAttribute("viewBox").split(/\s+/).map(Number);
+  const aplicar = (x, y, l, a) => svg.setAttribute("viewBox", `${x} ${y} ${l} ${a}`);
+  if (duracao <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) { aplicar(para.x, para.y, para.width, para.height); aoTerminar(); return; }
+  const inicio = performance.now();
+  const passo = (agora) => {
+    const t = Math.min(1, (agora - inicio) / duracao), e = 1 - Math.pow(1 - t, 3);
+    aplicar(x0 + (para.x - x0) * e, y0 + (para.y - y0) * e, l0 + (para.width - l0) * e, a0 + (para.height - a0) * e);
+    if (t < 1) requestAnimationFrame(passo);
+    else aoTerminar();
+  };
+  requestAnimationFrame(passo);
+}
+
+/* A janela do svg (mesma proporção do desenho) que enquadra um retângulo `c` com folga. */
+function janelaQueEnquadra(c, largura, altura, folga = 1.35) {
+  const proporcao = largura / altura;
+  const l = Math.max(c.width * folga, c.height * folga * proporcao), a = l / proporcao;
+  return { x: c.x + c.width / 2 - l / 2, y: c.y + c.height / 2 - a / 2, width: l, height: a };
 }

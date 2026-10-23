@@ -52,12 +52,16 @@ def montar_url(ambiente, cargo, uf, turno, eleicao=None, municipio=None):
 
 
 def url_foto(ambiente, cargo, uf, turno, sqcand, eleicao=None):
-    """Foto (JPEG) do candidato, que o TSE guarda ao lado do resultado. None se `sqcand` não é um número."""
+    """Foto (JPEG) do candidato, que o TSE guarda ao lado do resultado. None se `sqcand` não é um número.
+
+    A foto do presidente fica sempre na pasta `br`, mesmo quando o resultado é de um estado ou de uma cidade.
+    """
     sqcand = str(sqcand or "")
     if not sqcand.isascii() or not sqcand.isdigit():
         return None
     codigo = codigo_eleicao(ambiente, cargo, turno, eleicao)
-    return f"{AMBIENTES[ambiente]['base']}/{codigo}/fotos/{uf}/{sqcand}.jpeg"
+    pasta = "br" if cargo == "presidente" else uf
+    return f"{AMBIENTES[ambiente]['base']}/{codigo}/fotos/{pasta}/{sqcand}.jpeg"
 
 
 def url_municipios(ambiente, cargo, turno, eleicao=None):

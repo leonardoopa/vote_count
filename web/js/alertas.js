@@ -1,5 +1,5 @@
 /* App instalável (PWA) e alertas. O service worker só guarda a página, nunca os dados. */
-if ("serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
+if (!embutido && "serviceWorker" in navigator && (location.protocol === "https:" || ["localhost", "127.0.0.1"].includes(location.hostname))) {
   navigator.serviceWorker.register("/sw.js").catch(() => { /* sem app instalável: a página funciona igual */ });
 }
 

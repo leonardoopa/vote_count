@@ -58,6 +58,9 @@ function fotoDoCandidato(c) {
 const pct = (n) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + "%";
 
 const params = new URLSearchParams(location.search);
+const palco = { vista: "brasil" };   // qual mapa está na tela: "brasil", "uf" ou "mundo" (palco.js)
+const embutido = params.get("embed") === "1";
+if (embutido) document.documentElement.classList.add("embed");   // página dentro de um iframe de outro site: só o placar, sem filtros, mapas nem anúncio
 const estado = {
   cargo: params.get("cargo") in CARGOS ? params.get("cargo") : "presidente",
   uf: (params.get("uf") || "").toLowerCase(),
@@ -74,6 +77,24 @@ const consultaSelecao = (extra = {}) => {
   return q;
 };
 
+/* Endereço da tela: a seleção, a comparação aberta (se houver) e o modo incorporado. Quem abre o link vê a mesma tela. */
+const temChave = (objeto, chave) => Object.prototype.hasOwnProperty.call(objeto, chave);
+/* A comparação vai no endereço como "cargo:uf:turno" ou "cargo:uf:turno:município". Devolve null se o texto não serve. */
+function lerComparacao(texto) {
+  const [cargo, uf, turno, municipio = ""] = (texto || "").split(":");
+  const valida = temChave(CARGOS, cargo) && (uf === "br" || temChave(UFS, uf)) && (turno === "1" || turno === "2") && (!municipio || /^\d{5}$/.test(municipio));
+  return valida ? { cargo, uf, turno, municipio } : null;
+}
+const escreverComparacao = (c) => [c.cargo, c.uf, c.turno, c.municipio].filter(Boolean).join(":");
+let comparacaoAberta = null;   // a seleção do lado direito do Comparar, enquanto ele está aberto
+function enderecoDaTela({ incorporado = embutido, comparacao = comparacaoAberta } = {}) {
+  const q = consultaSelecao();
+  if (comparacao) q.set("comparar", escreverComparacao(comparacao));
+  if (incorporado) q.set("embed", "1");
+  return "?" + q;
+}
+const atualizarEndereco = () => history.replaceState(null, "", enderecoDaTela());
+
 let sequencia = 0, temporizador = null, ultimo = null, recebidoEm = 0, semConexao = false, alertasLigados = false;
 let cidades = [];            // cidades da UF escolhida: [{codigo, nome, capital}]
 let sequenciaCidades = 0;
@@ -82,8 +103,10 @@ let sequenciaCidades = 0;
    renderizar() nem em trocou(). Um erro num bloco não derruba o placar. */
 const aoRenderizar = [];    // (dados) depois que o placar foi pintado
 const aoMudarSelecao = [];  // () quando cargo, território, cidade, turno ou ambiente mudam
+const GANCHOS_DO_EMBUTIDO = ["pintarResumo", "pintarDuelo"];   // o que roda mesmo na página incorporada
 const avisar = (ganchos, ...args) => {
   for (const gancho of ganchos) {
+    if (embutido && !GANCHOS_DO_EMBUTIDO.includes(gancho.name)) continue;   // mapas, evolução e o resto nem carregam
     try { gancho(...args); } catch (erro) { console.error(erro); }
   }
 };

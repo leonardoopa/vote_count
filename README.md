@@ -157,6 +157,18 @@ flowchart LR
     TSE -- "a cada 10 s" --> CLI
 ```
 
+### A página: um mapa só
+
+A página é um painel de tela única. No topo ficam as abas por cargo (Presidente, Governador, Senado, Deputados, com Federal, Estadual e Distrital dentro dela) e, em tela larga, três colunas: o placar à esquerda (a faixa do duelo com os dois primeiros, o progresso, o resumo, a evolução e o ranking com fotos), o **mapa** no centro e as regiões, as disputas e o feed à direita. No celular tudo vira uma coluna, na ordem de sempre.
+
+O mapa do centro tem três vistas, e só a que está na tela busca dados no servidor:
+
+- **Brasil:** os estados coloridos pelo partido do líder (mais forte quanto maior a margem). A cada rodada o desenho só troca as cores, com transição, e o estado que mudou pisca de leve.
+- **Estado:** clicar num estado dá zoom animado até ele, os outros apagam e entra o mapa dos municípios, que enche aos poucos conforme o varredor busca as cidades. Clicar numa cidade dá outro zoom até ela e o placar passa a ser o da cidade.
+- **Exterior:** o botão "Exterior" troca o mapa pelo mapa-múndi, na mesma posição. A trilha "Brasil › Estado › Cidade" (ou "Brasil › Exterior › País") volta um passo.
+
+**Compartilhar** abre o link da tela (cargo, estado, cidade, turno e, se estiver aberta, a comparação: `?comparar=cargo:uf:turno[:município]`) e o código para **incorporar** o placar em outro site: um `<iframe>` com `?embed=1`. A página incorporada mostra só o título, o duelo, o progresso, o resumo e o ranking, atualiza sozinha, não traz anúncio, mapas nem service worker, sai dos buscadores (`noindex`) e termina com a fonte e um link de volta. O servidor já devolve o HTML com a classe `embed`, então a página não pisca.
+
 ### Atraso: é quase tempo real
 
 Não existe voto a voto ao vivo. O TSE publica novos totais a cada totalização das urnas, e os arquivos passam por CDN.
@@ -338,6 +350,7 @@ Ideias soltas, fora do Roadmap original: alerta por push de verdade (hoje só co
 - Não aumentar o acesso ao TSE: tudo novo sai do cache e dos snapshots do servidor. A exceção são os recursos que precisam de dezenas ou centenas de arquivos (hemiciclo da Câmara, mais votados, mapa por município e exterior por país): quem busca é só o varredor, com teto de `BUSCAS_EXTRAS_POR_SEGUNDO` no total (padrão 2, contra os 100 do TSE) e só enquanto alguém olha.
 - Manter a página sem dependência de CDN nem etapa de build (os arquivos de `web/` saem do servidor como estão), e o tema claro e escuro. As únicas imagens de fora são a foto do candidato (do TSE) e o banner do anúncio, baixadas pelo navegador do visitante, nunca pelo servidor. Cada recurso novo da página ganha o próprio arquivo em `web/js/` e entra em `web/index.html`; os scripts são clássicos e compartilham o escopo global, então a ordem das tags importa (`base.js` primeiro, `iniciar.js` por último).
 - Cada item novo ganha teste em `tests/`, no mesmo caminho do módulo (`contador/recursos/mapa.py` → `tests/recursos/test_mapa.py`).
+- Bloco novo da página que busca dados registra o gancho em `aoRenderizar` ou `aoMudarSelecao`. Na página incorporada (`?embed=1`) os ganchos não rodam, exceto os de `GANCHOS_DO_EMBUTIDO` (em `web/js/base.js`).
 - Atualizar a seção [API](#api) quando criar endpoint.
 
 ## Estrutura

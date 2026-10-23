@@ -30,5 +30,7 @@ async function carregarAnuncio() {
     medirAnuncio();
   } catch { /* sem faixa: o placar não depende dela */ }
 }
-carregarAnuncio();
-setInterval(carregarAnuncio, 10 * 60 * 1000);
+if (!embutido) {   // a página incorporada nunca mostra a faixa
+  carregarAnuncio();
+  setInterval(carregarAnuncio, 10 * 60 * 1000);
+}

@@ -543,8 +543,8 @@ html.embed .rodape p:nth-child(2) { display: none; }
 .mapa-svg text.uf-pct { font-size: 17px; font-weight: 500; }
 /* sigla e percentual por cima das cores dos municípios: letra branca com contorno escuro, em tamanho de tela (px) e não do desenho */
 .mapa-svg text:is(.uf-sigla, .uf-pct) { fill: #fff; stroke: rgba(0, 0, 0, 0.82); stroke-linejoin: round; paint-order: stroke; }
-.mapa-svg text.uf-sigla { font-size: calc(var(--upp, 1.6) * 12px); font-weight: 800; stroke-width: calc(var(--upp, 1.6) * 3.2px); }
-.mapa-svg text.uf-pct { font-size: calc(var(--upp, 1.6) * 9.5px); font-weight: 700; stroke-width: calc(var(--upp, 1.6) * 2.8px); }
+.mapa-svg text.uf-sigla { font-size: calc(var(--upp, 1.6) * 10px); font-weight: 800; stroke-width: calc(var(--upp, 1.6) * 2.8px); }
+.mapa-svg text.uf-pct { font-size: calc(var(--upp, 1.6) * 8px); font-weight: 700; stroke-width: calc(var(--upp, 1.6) * 2.4px); }
 .mapa-svg .uf-cor { stroke: rgba(255, 255, 255, 0.75); stroke-width: calc(var(--upp, 1.6) * 0.9px); paint-order: normal; }   /* o quadradinho do partido de quem lidera, com borda clara */
 .mapa-svg .etiquetas-linhas line { stroke: var(--ink-2); stroke-opacity: 0.55; stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .mapa-svg .etiqueta { cursor: pointer; }

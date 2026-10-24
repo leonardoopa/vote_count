@@ -165,7 +165,7 @@ class Pagina(unittest.TestCase):
         rotulos = (WEB / "js" / "mapa-brasil-rotulos.js").read_text(encoding="utf-8")
         self.assertIn('setProperty("--upp"', rotulos)   # unidades do desenho por pixel da tela, atualizado no redimensionamento e no zoom
         self.assertIn('class: "uf-cor"', rotulos)       # embaixo da sigla: o quadradinho do partido de quem lidera e o percentual
-        self.assertRegex(CSS, r"text\.uf-sigla \{ font-size: calc\(var\(--upp, 1\.6\) \* 12px\)")
+        self.assertRegex(CSS, r"text\.uf-sigla \{ font-size: calc\(var\(--upp, 1\.6\) \* 10px\)")
         self.assertRegex(CSS, r"\.mapa-svg text:is\(\.uf-sigla, \.uf-pct\) \{ fill: #fff; stroke: rgba\(0, 0, 0")
 
     def test_tabela_de_uf_por_codigo_ibge_e_a_mesma_no_script_no_servidor_e_na_ferramenta(self):

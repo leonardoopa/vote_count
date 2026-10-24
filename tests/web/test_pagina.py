@@ -156,6 +156,18 @@ class Pagina(unittest.TestCase):
         self.assertRegex(CSS, r"html:not\(\.embed\), html:not\(\.embed\) body \{ height: 100%; overflow: hidden; \}")
         self.assertRegex(CSS, r"html:not\(\.embed\) \.pagina \{ height: 100dvh;")
 
+    def test_svg_dos_estados_fica_por_cima_do_canvas_com_ordem_explicita(self):
+        # No Safari do iPhone o canvas (opacidade animada) ia para cima do SVG e apagava siglas e contornos.
+        self.assertRegex(CSS, r"\.mapa-pilha > svg \{ position: relative; z-index: 1; \}")
+        self.assertRegex(CSS, r"\.mapa-pilha > \.mapa-canvas \{ position: relative; z-index: 0; \}")
+
+    def test_siglas_dos_estados_tem_tamanho_de_tela_e_contorno_para_aparecer_sobre_as_cores(self):
+        rotulos = (WEB / "js" / "mapa-brasil-rotulos.js").read_text(encoding="utf-8")
+        self.assertIn('setProperty("--upp"', rotulos)   # unidades do desenho por pixel da tela, atualizado no redimensionamento e no zoom
+        self.assertIn('class: "uf-cor"', rotulos)       # embaixo da sigla: o quadradinho do partido de quem lidera e o percentual
+        self.assertRegex(CSS, r"text\.uf-sigla \{ font-size: calc\(var\(--upp, 1\.6\) \* 12px\)")
+        self.assertRegex(CSS, r"\.mapa-svg text:is\(\.uf-sigla, \.uf-pct\) \{ fill: #fff; stroke: rgba\(0, 0, 0")
+
     def test_tabela_de_uf_por_codigo_ibge_e_a_mesma_no_script_no_servidor_e_na_ferramenta(self):
         js = re.search(r"const UF_DO_CODIGO_IBGE = \{(.*?)\};", script(), re.S).group(1)
         do_script = dict(re.findall(r'(\d+): "([a-z]{2})"', js))

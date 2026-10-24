@@ -18,6 +18,7 @@ services:
       ANUNCIO_WHATSAPP_MENSAGEM: "${ANUNCIO_WHATSAPP_MENSAGEM:-}"
       URL_PUBLICA: "${URL_PUBLICA:-}"
       BUSCAS_EXTRAS_POR_SEGUNDO: "${BUSCAS_EXTRAS_POR_SEGUNDO:-2}"
+      AQUECER_MAPA: "${AQUECER_MAPA:-1}"
     volumes:
       - historico:/dados  # histórico da apuração: sobrevive a `docker compose down` (só `down -v` apaga)
 

@@ -1,4 +1,7 @@
 """Testes de `contador/varredor.py`."""
+import json
+import os
+import tempfile
 import threading
 import unittest
 from unittest import mock
@@ -299,4 +302,71 @@ class Trabalhadores(unittest.TestCase):
             v.pedir("g", fabrica({"a": "ua", "b": "ub"}))
         v.passo()
         self.assertEqual(pedidos, ["ua", "ub"])   # sem a reserva, a segunda thread buscaria "ua" de novo
+
+
+class Persistencia(unittest.TestCase):
+    """Com uma `pasta`, os resumos sobrevivem a uma reinicialização: o mapa nasce preenchido e cada arquivo espera a hora dele."""
+
+    def criar(self, pasta, respostas):
+        relogio = Relogio()
+        return Varredor(2, buscar=Fonte(respostas), relogio=relogio, dormir=lambda s: None, pasta=pasta), relogio
+
+    def pedir(self, v, f):
+        with mock.patch.object(threading.Thread, "start"):
+            return v.pedir(("cidades", "oficial", "1"), f)
+
+    def test_o_resumo_volta_do_disco_com_o_etag_e_nao_busca_antes_da_hora(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            v, relogio = self.criar(pasta, {"ua": R(200, {"x": 1}, '"e1"')})
+            self.pedir(v, fabrica({"a": "ua", "b": "ub"}, intervalo=600))
+            self.assertTrue(v.passo())
+            v.salvar()
+            self.assertEqual([n for n in os.listdir(pasta) if n.endswith(".json")].__len__(), 1)
+
+            novo, relogio2 = self.criar(pasta, {"ua": R(304, None, '"e1"'), "ub": R(200, {"x": 2}, '"e2"')})
+            relogio2.agora = relogio.agora + 100   # o servidor ficou parado por 100 s
+            grupo = self.pedir(novo, fabrica({"a": "ua", "b": "ub"}, intervalo=600))
+            self.assertEqual(novo.resumos(grupo)["a"], ({"x": 1}, 1000.0, 200))   # já está no mapa, sem nenhuma busca
+            self.assertEqual(novo.resumos(grupo)["b"][0], None)                    # o que nunca chegou segue pendente
+            novo.passo()
+            self.assertEqual(novo.buscar.pedidos, [("ub", None)])                  # "a" ainda não venceu; só o pendente é buscado
+            relogio2.agora += 600
+            self.pedir(novo, fabrica({"a": "ua", "b": "ub"}, intervalo=600))   # alguém voltou a olhar (sem pedido, o grupo fica ocioso)
+            novo.passo()
+            self.assertEqual(novo.buscar.pedidos[-1], ("ua", '"e1"'))              # na hora dele, revalida com o ETag guardado
+
+    def test_arquivo_estragado_ou_de_outra_forma_e_ignorado(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            v, _ = self.criar(pasta, {"ua": R(200, {"x": 1}, None)})
+            self.pedir(v, fabrica({"a": "ua"}))
+            v.passo()
+            v.salvar()
+            arquivo = os.path.join(pasta, os.listdir(pasta)[0])
+            for conteudo in ("não é json", json.dumps({"resumos": {"a": "lixo"}}), json.dumps([1, 2]), json.dumps({"resumos": {"a": [1, 2, 3]}})):
+                with open(arquivo, "w", encoding="utf-8") as f:
+                    f.write(conteudo)
+                novo, _ = self.criar(pasta, {})
+                grupo = self.pedir(novo, fabrica({"a": "ua"}))
+                self.assertEqual(novo.resumos(grupo)["a"][0], None)
+
+    def test_sem_pasta_nada_vai_para_o_disco_e_pasta_sem_permissao_nao_derruba(self):
+        v, _ = self.criar(None, {"ua": R(200, {"x": 1}, None)})
+        self.pedir(v, fabrica({"a": "ua"}))
+        v.passo()
+        v.salvar()   # sem pasta: não faz nada
+        with tempfile.NamedTemporaryFile() as arquivo:   # "pasta" que é um arquivo: criar a pasta falha
+            v, _ = self.criar(arquivo.name, {"ua": R(200, {"x": 1}, None)})
+            self.pedir(v, fabrica({"a": "ua"}))
+            v.passo()
+            v.salvar()   # o erro de disco não sobe
+            self.assertTrue(v._sujos)   # e fica marcado para tentar de novo
+
+    def test_a_thread_grava_ao_ficar_ociosa(self):
+        with tempfile.TemporaryDirectory() as pasta:
+            v, relogio = self.criar(pasta, {"ua": R(200, {"x": 1}, None)})
+            self.pedir(v, fabrica({"a": "ua"}))
+            v.passo()
+            relogio.agora += varredor.OCIOSO_S + 1   # ninguém olha há muito tempo
+            v._rodar()
+            self.assertEqual(len([n for n in os.listdir(pasta) if n.endswith(".json")]), 1)
 

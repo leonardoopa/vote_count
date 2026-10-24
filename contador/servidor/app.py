@@ -11,6 +11,7 @@ import argparse
 import signal
 from http.server import ThreadingHTTPServer
 
+from contador.servidor import aquecimento
 from contador.servidor.handler import Handler
 
 
@@ -22,6 +23,7 @@ def main(argv=None):
     signal.signal(signal.SIGTERM, signal.default_int_handler)  # docker stop encerra na hora
     servidor = ThreadingHTTPServer((args.host, args.porta), Handler)
     print(f"Contador no ar em http://{args.host}:{args.porta}", flush=True)
+    aquecimento.iniciar()   # o mapa por município começa a encher antes de alguém abrir a página
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:

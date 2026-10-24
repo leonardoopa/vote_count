@@ -8,12 +8,17 @@ arquivos. Para não aumentar o risco com o TSE (100 req/s por IP, bloqueio de 10
 - só trabalha enquanto alguém está olhando: sem pedido por OCIOSO_S segundos, a thread encerra;
 - cada arquivo é revalidado com ETag (resposta 304 não traz corpo) e só o resumo fica em memória;
 - 403 ou 429 pausam tudo por 10 min; 3 respostas 404 seguidas pausam por 60 s;
-- o que a pessoa está olhando (`priorizar`) passa na frente: o mesmo teto vale, só muda a ordem.
+- o que a pessoa está olhando (`priorizar`) passa na frente: o mesmo teto vale, só muda a ordem;
+- com uma `pasta`, os resumos vão para o disco (a cada SALVAR_S e quando a thread encerra) e voltam quando o grupo é pedido
+  de novo: depois de reiniciar o servidor, o mapa já nasce preenchido e cada arquivo só é revalidado na hora dele.
 
 Este módulo não conhece nenhum recurso: cada um registra um grupo de trabalhos com a função que
 transforma o arquivo do TSE no resumo que guarda.
 """
+import hashlib
+import json
 import math
+import os
 import threading
 import time
 
@@ -30,6 +35,7 @@ FOCO_S = 90              # tempo que uma prioridade dura se a página não a ren
 BUSCAS_POR_AJUDANTE = 3  # acima de 5 buscas por segundo entram mais threads: uma só não passa de ~3 por segundo (a rede demora)
 MAX_TRABALHADORES = 8
 RESERVA_S = 60           # a busca que uma thread começou fica reservada por isto, para outra não pegar o mesmo arquivo
+SALVAR_S = 60            # de quanto em quanto tempo os resumos novos vão para o disco
 
 
 class Trabalho:
@@ -48,6 +54,7 @@ class Trabalho:
 
 class Grupo:
     def __init__(self, trabalhos, resumir, intervalo):
+        self.nome = None            # preenchido por `pedir`; dá o nome do arquivo no disco
         self.trabalhos = trabalhos  # {chave: Trabalho}
         self.resumir = resumir      # (dados do TSE, chave) -> resumo; pode levantar KeyError/ValueError/TypeError
         self.intervalo = intervalo  # resumo -> segundos até buscar de novo
@@ -55,8 +62,11 @@ class Grupo:
 
 
 class Varredor:
-    def __init__(self, por_segundo, buscar=None, relogio=time.time, dormir=time.sleep):
+    def __init__(self, por_segundo, buscar=None, relogio=time.time, dormir=time.sleep, pasta=None):
         self.por_segundo = por_segundo
+        self.pasta = pasta     # onde guardar os resumos entre uma execução e outra (None: só na memória)
+        self._sujos = set()    # grupos com resumo novo ainda não gravado
+        self._salvo_em = 0.0
         self.buscar = buscar  # None: usa `cliente.buscar` na hora de cada busca (a demonstração troca essa função)
         self.relogio, self.dormir = relogio, dormir
         self._grupos = {}
@@ -91,6 +101,8 @@ class Varredor:
             grupo = self._grupos.get(nome)
             if grupo is None:
                 grupo = self._grupos[nome] = Grupo(*fabrica())
+                grupo.nome = nome
+                self._carregar(grupo)
                 while len(self._grupos) > MAX_GRUPOS:
                     self._grupos.pop(next(iter(self._grupos)))
             grupo.ultimo_pedido = self.relogio()
@@ -151,6 +163,7 @@ class Varredor:
                     try:
                         trabalho.resumo = grupo.resumir(resposta.dados, trabalho.chave)
                         trabalho.etag = resposta.etag
+                        self._sujos.add(grupo.nome)
                     except (KeyError, ValueError, TypeError, IndexError):
                         trabalho.resumo = None  # arquivo fora do formato: o recurso mostra a UF sem dados
                 trabalho.verificado = agora
@@ -166,15 +179,62 @@ class Varredor:
             else:
                 trabalho.proxima = agora + ESPERA_FALHA_S
 
+    def _arquivo(self, nome):
+        return os.path.join(self.pasta, "varredor-" + hashlib.sha1(repr(nome).encode()).hexdigest()[:16] + ".json")
+
+    def _carregar(self, grupo):
+        """Devolve ao grupo recém-criado os resumos que ficaram no disco (com o ETag, para a revalidação custar um 304)."""
+        if not self.pasta:
+            return
+        try:
+            with open(self._arquivo(grupo.nome), encoding="utf-8") as arquivo:
+                salvo = json.load(arquivo)["resumos"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return
+        for chave, trabalho in grupo.trabalhos.items():
+            item = salvo.get(chave) if isinstance(salvo, dict) else None
+            if not (isinstance(item, list) and len(item) == 3 and isinstance(item[0], dict)):
+                continue
+            trabalho.resumo, trabalho.etag, trabalho.verificado = item
+            trabalho.status = 200
+            trabalho.proxima = trabalho.verificado + grupo.intervalo(trabalho.resumo)   # a hora dele, como se o servidor não tivesse parado
+
+    def salvar(self):
+        """Grava no disco os grupos que receberam resumo novo. Erro de disco não derruba o varredor."""
+        if not self.pasta:
+            return
+        with self._trava:
+            instantaneos = []
+            for nome in self._sujos:
+                grupo = self._grupos.get(nome)
+                if grupo is not None:
+                    instantaneos.append((nome, {c: [t.resumo, t.etag, t.verificado] for c, t in grupo.trabalhos.items() if t.resumo}))
+            self._sujos.clear()
+            self._salvo_em = self.relogio()
+        try:
+            os.makedirs(self.pasta, exist_ok=True)
+            for nome, resumos in instantaneos:
+                arquivo = self._arquivo(nome)
+                with open(arquivo + ".tmp", "w", encoding="utf-8") as saida:
+                    json.dump({"versao": 1, "resumos": resumos}, saida, separators=(",", ":"))
+                os.replace(arquivo + ".tmp", arquivo)
+        except (OSError, TypeError, ValueError):
+            with self._trava:
+                self._sujos.update(nome for nome, _ in instantaneos)   # tenta de novo na próxima
+
     def _rodar(self, principal=True):
         espera = self.trabalhadores / self.por_segundo
         while True:
             with self._trava:
                 agora = self.relogio()
-                if not any(agora - g.ultimo_pedido < OCIOSO_S for g in self._grupos.values()):
-                    if principal:
-                        self._thread = None
-                    return
+                ocioso = not any(agora - g.ultimo_pedido < OCIOSO_S for g in self._grupos.values())
+                if ocioso and principal:
+                    self._thread = None
+                precisa_salvar = bool(self._sujos) and (ocioso or agora - self._salvo_em >= SALVAR_S)
+            if precisa_salvar:
+                self.salvar()   # fora da trava: o disco também é lento
+            if ocioso:
+                return
             inicio = self.relogio()
             buscou = self.passo()
             self.dormir(max(0.0, espera - (self.relogio() - inicio)) if buscou else 1.0)   # a rede já gastou parte da espera

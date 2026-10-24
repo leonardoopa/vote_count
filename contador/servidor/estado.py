@@ -24,4 +24,5 @@ ANUNCIO = anuncio.do_ambiente()
 # Recursos que precisam de dezenas de arquivos do TSE (os deputados de cada UF) são servidos pelo varredor:
 # uma thread, poucas buscas por segundo no total, só enquanto alguém olha. 0 desliga esses recursos.
 BUSCAS_EXTRAS_POR_SEGUNDO = float(os.environ.get("BUSCAS_EXTRAS_POR_SEGUNDO", "2") or 0)
-VARREDOR = varredor.Varredor(BUSCAS_EXTRAS_POR_SEGUNDO)
+# Com HISTORICO_DIR, os resumos das cidades também ficam no disco: depois de reiniciar, o mapa por município já nasce preenchido.
+VARREDOR = varredor.Varredor(BUSCAS_EXTRAS_POR_SEGUNDO, pasta=os.environ.get("HISTORICO_DIR") or None)

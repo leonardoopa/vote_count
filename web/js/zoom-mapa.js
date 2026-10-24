@@ -30,24 +30,24 @@ function ativarZoom(caixa, svg, largura, altura, { maximo = 40, aoParar = () => 
     clearTimeout(parou);
     parou = setTimeout(() => aoParar(vista), 250);
   };
-  const noDesenho = (x, y) => {           // onde o ponteiro está: fração do mapa na tela e ponto do desenho embaixo dele
-    const r = svg.getBoundingClientRect();
-    const fx = r.width ? (x - r.left) / r.width : 0.5, fy = r.height ? (y - r.top) / r.height : 0.5;
-    return { fx, fy, ux: vista.x + fx * largura / vista.k, uy: vista.y + fy * altura / vista.k };
-  };
+  /* A caixa do svg pode ser mais alta (ou mais larga) que o desenho: o navegador centraliza o desenho nela. Por isso as contas
+     partem do centro da caixa e dos pixels por unidade do desenho (`porUnidade`), nunca da caixa inteira. */
+  const porUnidade = () => { const m = svg.getScreenCTM(), r = svg.getBoundingClientRect(); return (m && m.a) || (r.width * vista.k / largura) || 1; };
+  const centroDaCaixa = () => { const r = svg.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
   const ampliar = (fator, x, y) => {      // o ponto sob (x, y) fica parado; sem ponto, vale o centro do mapa
-    const r = svg.getBoundingClientRect();
-    const { fx, fy, ux, uy } = noDesenho(x ?? r.left + r.width / 2, y ?? r.top + r.height / 2);
+    const c = centroDaCaixa(), s = porUnidade(), px = (x ?? c.x) - c.x, py = (y ?? c.y) - c.y;
+    const ux = vista.x + largura / vista.k / 2 + px / s, uy = vista.y + altura / vista.k / 2 + py / s;   // ponto do desenho sob o ponteiro
+    const antes = vista.k;
     vista.k = Math.min(maximo, Math.max(1, vista.k * fator));
-    vista.x = ux - fx * largura / vista.k;
-    vista.y = uy - fy * altura / vista.k;
+    const s2 = s * vista.k / antes;               // pixels por unidade depois da ampliação (cresce junto com k)
+    vista.x = ux - px / s2 - largura / vista.k / 2;
+    vista.y = uy - py / s2 - altura / vista.k / 2;
     aplicar();
   };
   const mover = (dx, dy) => {             // deslocamento em pixels da tela
-    const r = svg.getBoundingClientRect();
-    if (!r.width) return;
-    vista.x -= dx / r.width * largura / vista.k;
-    vista.y -= dy / r.height * altura / vista.k;
+    const s = porUnidade();
+    vista.x -= dx / s;
+    vista.y -= dy / s;
     aplicar();
   };
   const reiniciar = () => { Object.assign(vista, { x: 0, y: 0, k: 1 }); aplicar(); };
@@ -142,7 +142,11 @@ function ativarZoom(caixa, svg, largura, altura, { maximo = 40, aoParar = () => 
 
   return {
     vista, ampliar, reiniciar, irPara,
-    unidadesPorPixel: () => largura / vista.k / (svg.getBoundingClientRect().width || 1),
+    unidadesPorPixel: () => 1 / porUnidade(),
+    visivel() {   // o retângulo do desenho que aparece na caixa (com caixa mais alta que o desenho, sobra em cima e embaixo)
+      const r = svg.getBoundingClientRect(), s = porUnidade(), l = r.width / s, a = r.height / s;
+      return { x: vista.x + largura / vista.k / 2 - l / 2, y: vista.y + altura / vista.k / 2 - a / 2, largura: l, altura: a };
+    },
     destruir() { clearTimeout(parou); clearTimeout(lembreteTimer); },
   };
 }
@@ -150,7 +154,7 @@ function ativarZoom(caixa, svg, largura, altura, { maximo = 40, aoParar = () => 
 /* Nomes escritos num mapa com zoom: só das formas largas o bastante na tela (então só com zoom) e dentro da janela.
    `mapa` guarda {zoom, caixas: Map(id -> retângulo no desenho), rotulos: <g>, textos: Map(id -> <text>)}; `nomes` é {id: nome}. */
 function rotularMapa(mapa, nomes, largura, altura, { kMinimo = 2, maximo = 150, minimoPx = 44 } = {}) {
-  const { x, y, k } = mapa.zoom.vista, janelaL = largura / k, janelaA = altura / k, porPixel = mapa.zoom.unidadesPorPixel();
+  const { k } = mapa.zoom.vista, { x, y, largura: janelaL, altura: janelaA } = mapa.zoom.visivel(), porPixel = mapa.zoom.unidadesPorPixel();
   const querem = [];
   if (k >= kMinimo) {
     for (const [id, c] of mapa.caixas) {

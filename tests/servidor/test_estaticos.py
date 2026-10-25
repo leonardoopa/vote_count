@@ -80,3 +80,18 @@ class Http(unittest.TestCase):
         self.assertGreater(len(json.loads(corpo)["m"]), 600)
         self.assertEqual(self.pedir("/geo/zz.json")[0].status, 404)
         self.assertEqual(self.pedir("/geo/..%2Fapp.py")[0].status, 404)
+
+
+class IconeDoAnuncio(unittest.TestCase):
+    def test_serve_o_icone_com_tipo_de_imagem(self):
+        status, tipo, corpo, _ = estaticos.arquivo_da_web("/anuncios/outlets-import.jpg")
+        self.assertEqual((status, tipo), (200, "image/jpeg"))
+        self.assertTrue(corpo.startswith(b"\xff\xd8"))
+
+    def test_icone_que_nao_existe_e_404(self):
+        self.assertEqual(estaticos.arquivo_da_web("/anuncios/nao-existe.png")[0], 404)
+
+    def test_so_nomes_simples_de_imagem(self):
+        for caminho in ("/anuncios/../sw.js", "/anuncios/a.svg", "/anuncios/A.png", "/anuncios/", "/anuncios/a.jpg/x"):
+            with self.subTest(caminho=caminho):
+                self.assertIsNone(estaticos.arquivo_da_web(caminho))

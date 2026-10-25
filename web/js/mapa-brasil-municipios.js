@@ -4,8 +4,8 @@
    em votos de quem lidera; Estados: a pintura por estado de sempre.
    O desenho (geo/brasil.json: os ~5,6 mil municípios nas mesmas coordenadas dos estados) vai num <canvas> por baixo do SVG dos
    estados: 5,6 mil elementos SVG travavam a página (montar, pintar e dar zoom), e no canvas redesenhar tudo custa poucos
-   milissegundos. Cada município nasce com a cor do estado dele, que chega logo, e troca pela própria conforme o servidor
-   busca as cidades no TSE: o mapa vai se afinando sozinho. */
+   milissegundos. Cada município nasce cinza e ganha a própria cor conforme o servidor busca as cidades no TSE: só município
+   pinta o mapa, nunca o estado inteiro. */
 const CAMINHOS_POR_QUADRO = 1400;   // Path2D por quadro ao montar a camada
 const INTERVALO_BRASIL_MUN = 20000;
 const INTERVALO_BRASIL_MUN_PRONTO = 120000;
@@ -92,7 +92,7 @@ function montarCamada() {
   const pilha = criar("div", { class: "mapa-pilha" }, bm.canvas);
   caixa.insertBefore(pilha, svg);
   pilha.append(svg);
-  svg.dataset.modo = "estados";   // até a camada ficar pronta, vale a pintura por estado
+  svg.dataset.modo = modoDoMapa();   // enquanto a camada monta, os estados ficam sem cor: só município pinta o mapa
   new ResizeObserver(ajustarCanvas).observe(svg);
   new MutationObserver(agendarDesenho).observe(svg, { attributes: true, attributeFilter: ["viewBox"] });   // o zoom anima o viewBox
   const entradas = Object.entries(bm.geo.m);
@@ -248,17 +248,16 @@ function percentualDoCandidatoNaCidade(linha) {
 }
 const forcaDoCandidato = (p) => 0.12 + 0.88 * entre0e1((p - bm.faixa[0]) / (bm.faixa[1] - bm.faixa[0]));
 
-/* A cor de cada município, em rgba: a dele, se já chegou; senão a do estado com metade da força (ou cinza, no "Apurado"). */
+/* A cor de cada município, em rgba: a dele, se já chegou; senão cinza (o estado nunca empresta a cor dele). */
 function corDoMunicipio(ibge, linha, modo) {
   if (modo === "candidato") {
     const cor = rgbDoPartido(bm.candidato.partido);
-    const p = linha ? percentualDoCandidatoNaCidade(linha) : percentualNaUf(mapaDados.ufs[ufDoIbge(ibge)], bm.candidato.numero);
-    return p === null ? "rgba(137,135,129,0.08)" : rgba(cor, forcaDoCandidato(p) * (linha ? 1 : 0.5));
+    const p = linha ? percentualDoCandidatoNaCidade(linha) : null;
+    return p === null ? "rgba(137,135,129,0.08)" : rgba(cor, forcaDoCandidato(p));
   }
   if (modo === "apurado") return linha ? rgba(rgbDaVariavel("--series"), 0.18 + 0.82 * Math.min(linha[4], 100) / 100) : "rgba(137,135,129,0.2)";
   if (linha) return rgba(rgbDoPartido(bm.dados.candidatos[linha[0]].partido), forcaDaVantagem(linha[2] >= 0 ? linha[1] - linha[3] : linha[1]));
-  const r = mapaDados.ufs[ufDoIbge(ibge)];
-  return r && r.situacao === "lider" ? rgba(rgbDoPartido(r.lider.partido), forcaDaVantagem(r.margem) * 0.5) : "rgba(137,135,129,0.15)";
+  return "rgba(137,135,129,0.15)";
 }
 
 /* A escala do mapa do candidato vai do 5º ao 95º percentil da votação dele, para um município fora da curva não apagar o resto. */
@@ -338,7 +337,7 @@ function pintarLegendaDosMunicipios() {
   $("mapa-legenda").replaceChildren(...itens);
   $("mapa-info").textContent = `${inteiro(bm.dados.carregadas)} de ${inteiro(bm.dados.total)} municípios`;
   $("mapa-explica").textContent = {
-    municipios: "A cor é a do partido de quem lidera cada município; quanto mais forte, maior a vantagem (até 20 pontos). O município que ainda não chegou do TSE fica com a cor do estado, mais fraca. Clique para ver o estado.",
+    municipios: "A cor é a do partido de quem lidera cada município; quanto mais forte, maior a vantagem (até 20 pontos). O município que ainda não chegou do TSE fica cinza. Clique para ver o estado.",
     apurado: "A cor mostra quanto das seções de cada município já foi apurado: quanto mais forte, mais apurado. Clique para ver o estado.",
     candidato: bm.candidato ? `A cor mostra a votação de ${bm.candidato.nome} em cada município: quanto mais forte, mais votos válidos ele teve ali. Onde ele não ficou entre os dois primeiros o município fica apagado. Clique para ver o estado.` : "",
     vantagem: "Cada pico é um município: a altura é a vantagem em votos de quem lidera nele e a cor é a do partido. Clique para ver o estado.",

@@ -1,6 +1,6 @@
 """Tabelas de rotas. Um recurso novo escreve a sua função num arquivo desta pasta e registra o caminho aqui."""
 from contador.servidor.estaticos import service_worker
-from contador.servidor.rotas.anuncio import faixa_de_anuncio
+from contador.servidor.rotas.anuncio import faixa_de_anuncio, ir_para_o_anuncio, numeros_de_acesso
 from contador.servidor.rotas.busca import busca_rapida
 from contador.servidor.rotas.compartilhamento import cartao_do_placar, icone, manifesto, pagina_inicial
 from contador.servidor.rotas.deputados import camara_dos_deputados, mais_votados
@@ -17,6 +17,7 @@ ROTAS_API = {
     "/api/historico": historico_da_selecao,
     "/api/atualizacoes": atualizacoes_da_selecao,
     "/api/anuncio": faixa_de_anuncio,
+    "/api/acessos": numeros_de_acesso,
     "/api/mapa": mapa_por_uf,
     "/api/mapa-historico": mapa_historico,
     "/api/regioes": regioes_do_pais,
@@ -32,6 +33,7 @@ ROTAS_API = {
 # Rotas que não são JSON: caminho -> função(consulta, cabeçalhos) que devolve (status, tipo, corpo, cabeçalhos extras).
 ROTAS_ARQUIVO = {
     "/": pagina_inicial,
+    "/ir/anuncio": ir_para_o_anuncio,
     "/og.png": cartao_do_placar,
     "/icone-192.png": icone(192),
     "/icone-512.png": icone(512),

@@ -5,7 +5,7 @@ As rotas leem estes objetos como `estado.CACHE` (e não com `from ... import`) p
 import os
 
 from contador import varredor
-from contador.divulgacao import anuncio
+from contador.divulgacao import acessos, anuncio
 from contador.recursos import historico, historico_mapa
 from contador.tse.cache import Cache
 
@@ -20,6 +20,10 @@ HISTORICO_DO_MAPA = historico_mapa.HistoricoDoMapa()
 
 # Faixa de publicidade do topo: configurada por variáveis de ambiente e lida só na partida.
 ANUNCIO = anuncio.do_ambiente()
+
+# Visitas, pessoas e cliques no anúncio, por hora. Fica em HISTORICO_DIR/acessos.json; /api/acessos mostra com ACESSOS_CHAVE.
+ACESSOS = acessos.do_ambiente()
+ACESSOS_CHAVE = os.environ.get("ACESSOS_CHAVE", "").strip()
 
 # Recursos que precisam de dezenas de arquivos do TSE (os deputados de cada UF) são servidos pelo varredor:
 # uma thread, poucas buscas por segundo no total, só enquanto alguém olha. 0 desliga esses recursos.

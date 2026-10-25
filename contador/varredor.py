@@ -90,10 +90,12 @@ class Varredor:
             return 1
         return min(MAX_TRABALHADORES, math.ceil(self.por_segundo / BUSCAS_POR_AJUDANTE))
 
-    def pedir(self, nome, fabrica):
+    def pedir(self, nome, fabrica, total=None):
         """Marca o grupo como em uso (criando-o com `fabrica()` se for novo) e garante que a thread esteja rodando.
 
         Devolve o Grupo, ou None com o varredor desligado. `fabrica` devolve (trabalhos, resumir, intervalo).
+        Com `total`, um grupo que nasceu com menos trabalhos que isso é refeito com `fabrica()`, mantendo o que já foi
+        buscado: sem isso, um grupo criado enquanto o TSE ainda não tinha respondido ficava vazio até reiniciar.
         """
         if not self.ligado:
             return None
@@ -105,6 +107,12 @@ class Varredor:
                 self._carregar(grupo)
                 while len(self._grupos) > MAX_GRUPOS:
                     self._grupos.pop(next(iter(self._grupos)))
+            elif total is not None and len(grupo.trabalhos) < total:
+                trabalhos, grupo.resumir, grupo.intervalo = fabrica()
+                velhos = grupo.trabalhos
+                grupo.trabalhos = {chave: velhos.get(chave, novo) for chave, novo in trabalhos.items()}
+                novos = [t for chave, t in grupo.trabalhos.items() if chave not in velhos]
+                self._carregar(grupo, so=novos)
             grupo.ultimo_pedido = self.relogio()
             if self._thread is None or not self._thread.is_alive():
                 self._thread = threading.Thread(target=self._rodar, name="varredor", daemon=True)
@@ -182,8 +190,8 @@ class Varredor:
     def _arquivo(self, nome):
         return os.path.join(self.pasta, "varredor-" + hashlib.sha1(repr(nome).encode()).hexdigest()[:16] + ".json")
 
-    def _carregar(self, grupo):
-        """Devolve ao grupo recém-criado os resumos que ficaram no disco (com o ETag, para a revalidação custar um 304)."""
+    def _carregar(self, grupo, so=None):
+        """Devolve ao grupo recém-criado (ou só aos trabalhos `so`) os resumos que ficaram no disco (com o ETag, para a revalidação custar um 304)."""
         if not self.pasta:
             return
         try:
@@ -191,8 +199,8 @@ class Varredor:
                 salvo = json.load(arquivo)["resumos"]
         except (OSError, ValueError, KeyError, TypeError):
             return
-        for chave, trabalho in grupo.trabalhos.items():
-            item = salvo.get(chave) if isinstance(salvo, dict) else None
+        for trabalho in grupo.trabalhos.values() if so is None else so:
+            item = salvo.get(trabalho.chave) if isinstance(salvo, dict) else None
             if not (isinstance(item, list) and len(item) == 3 and isinstance(item[0], dict)):
                 continue
             trabalho.resumo, trabalho.etag, trabalho.verificado = item

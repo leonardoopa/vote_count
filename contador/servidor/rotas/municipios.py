@@ -54,7 +54,7 @@ def mapa_municipal_do_brasil(consulta):
         trabalhos = {c: varredor.Trabalho(c, catalogo.montar_url(ambiente, cargo, por_ibge[c][0], turno, municipio=por_ibge[c][1])) for c in ordem}
         return trabalhos, municipios.resumir_cidade_do_brasil, municipios.intervalo
 
-    grupo = estado.VARREDOR.pedir(("cidades-do-brasil", ambiente, cargo, turno), fabrica)
+    grupo = estado.VARREDOR.pedir(("cidades-do-brasil", ambiente, cargo, turno), fabrica, total=len(por_ibge))   # estado novo com arquivo: o grupo cresce
     foto_de = lambda uf, sqcand: catalogo.url_foto(ambiente, cargo, uf, turno, sqcand)
     corpo = municipios.montar_brasil(cargo, estado.VARREDOR.resumos(grupo), len(por_ibge), foto_de, estado.VARREDOR.relogio())
     corpo.update(cargo=cargo, turno=turno, ambiente=ambiente)

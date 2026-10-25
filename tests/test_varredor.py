@@ -115,6 +115,28 @@ class Passo(unittest.TestCase):
         self.assertIs(a, b)
         self.assertEqual(len(chamadas), 1)
 
+    def test_grupo_que_nasceu_pequeno_cresce_e_guarda_o_que_ja_buscou(self):
+        """Pedido feito enquanto o TSE ainda não respondia: o grupo nascia vazio e ficava assim até reiniciar."""
+        v, _ = criar_varredor({"ua": R(200, {"x": 1}, '"e1"')})
+        pequeno = fabrica({"a": "ua"})
+        grande = fabrica({"a": "ua", "b": "ub"})
+        with mock.patch.object(threading.Thread, "start"):
+            grupo = v.pedir("g", pequeno, total=1)
+            v.passo()
+            self.assertIs(v.pedir("g", grande, total=2), grupo)
+        self.assertEqual(sorted(grupo.trabalhos), ["a", "b"])
+        self.assertEqual(grupo.trabalhos["a"].resumo, {"x": 1})   # o que já tinha sido buscado continua
+        self.assertIsNone(grupo.trabalhos["b"].resumo)
+
+    def test_sem_total_o_grupo_nao_e_refeito(self):
+        v, _ = criar_varredor({})
+        chamadas = []
+        f = lambda: (chamadas.append(1), ({"a": Trabalho("a", "u")}, lambda d, c: d, lambda r: 1))[1]
+        self.pedir_sem_thread(v, "g", f)
+        with mock.patch.object(threading.Thread, "start"):
+            v.pedir("g", f, total=1)
+        self.assertEqual(len(chamadas), 1)
+
     def test_numero_de_grupos_tem_teto(self):
         v, _ = criar_varredor({})
         with mock.patch.object(varredor, "MAX_GRUPOS", 3):

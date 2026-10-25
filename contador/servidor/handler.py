@@ -4,7 +4,8 @@ import json
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from contador.servidor import estaticos
+from contador.divulgacao.acessos import ip_do_visitante
+from contador.servidor import estado, estaticos
 from contador.servidor.rotas import ROTAS_API, ROTAS_ARQUIVO
 
 
@@ -36,6 +37,8 @@ class Handler(BaseHTTPRequestHandler):
                 dados, extras = gzip.compress(dados, 5, mtime=0), {"Content-Encoding": "gzip", "Vary": "Accept-Encoding"}
             self._enviar(status, "application/json; charset=utf-8", dados, extras)
         elif url.path in ROTAS_ARQUIVO:
+            if url.path == "/" and self.command == "GET":   # uma visita é uma abertura da página
+                estado.ACESSOS.visita(ip_do_visitante(self.headers, self.client_address[0]), self.headers.get("User-Agent") or "")
             status, tipo, corpo, extras = ROTAS_ARQUIVO[url.path](consulta, self.headers)
             self._enviar(status, tipo, corpo, extras)
         elif url.path == "/saude":

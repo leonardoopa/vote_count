@@ -30,7 +30,7 @@ async function carregarAnuncio() {
     }
     partes.push(criar("span", { class: "anuncio-linha" }, ...linha));
     const conteudo = ehHttp(corpo.link)
-      ? criar("a", { class: "anuncio-conteudo", href: corpo.link, target: "_blank", rel: "sponsored noopener noreferrer" }, ...partes)
+      ? criar("a", { class: "anuncio-conteudo", href: "/ir/anuncio", target: "_blank", rel: "sponsored noopener noreferrer" }, ...partes)   // passa pelo servidor, que conta o clique e redireciona para corpo.link
       : criar("div", { class: "anuncio-conteudo" }, ...partes);
     faixa.classList.toggle("com-imagem", ehHttp(corpo.imagem));
     faixa.replaceChildren(...(corpo.rotulo ? [criar("span", { class: "anuncio-rotulo" }, corpo.rotulo)] : []), conteudo);

@@ -1,5 +1,5 @@
 /* Faixa de anúncio: o texto entra como texto puro e o link só vale com http(s). Com imagem, ela vem acima do texto; se não
-   carregar, some e fica o texto. Link, quando há, cobre a faixa toda (imagem e texto): um link só para leitor de tela. */
+   carregar, some e fica o texto. O ícone (logo pequeno) vem ao lado do texto, e também some se não carregar. Link, quando há, cobre a faixa toda (imagem e texto): um link só para leitor de tela. */
 /* A faixa fica fixa no topo: a CSS usa a altura dela para não esconder o que a página rola até o alto. */
 const medirAnuncio = () => {
   const faixa = $("anuncio");
@@ -8,6 +8,7 @@ const medirAnuncio = () => {
 if ("ResizeObserver" in window) new ResizeObserver(medirAnuncio).observe($("anuncio"));
 window.addEventListener("resize", medirAnuncio);
 const ehHttp = (endereco) => /^https?:\/\//i.test(endereco || "");
+const ehIcone = (endereco) => ehHttp(endereco) || /^\/anuncios\/[a-z0-9-]+\.(png|jpg|webp)$/.test(endereco || "");
 async function carregarAnuncio() {
   try {
     const corpo = await (await fetch("/api/anuncio", { cache: "no-store" })).json();
@@ -21,7 +22,13 @@ async function carregarAnuncio() {
       imagem.addEventListener("load", medirAnuncio);      // a altura só se sabe depois que a imagem chega
       partes.push(imagem);
     }
-    partes.push(criar("span", { class: "anuncio-texto" }, corpo.texto));
+    const linha = [criar("span", { class: "anuncio-texto" }, corpo.texto)];
+    if (ehIcone(corpo.icone)) {
+      const icone = criar("img", { class: "anuncio-icone", src: corpo.icone, alt: "", decoding: "async", referrerpolicy: "no-referrer" });
+      icone.addEventListener("error", () => icone.remove());
+      linha.unshift(icone);
+    }
+    partes.push(criar("span", { class: "anuncio-linha" }, ...linha));
     const conteudo = ehHttp(corpo.link)
       ? criar("a", { class: "anuncio-conteudo", href: corpo.link, target: "_blank", rel: "sponsored noopener noreferrer" }, ...partes)
       : criar("div", { class: "anuncio-conteudo" }, ...partes);

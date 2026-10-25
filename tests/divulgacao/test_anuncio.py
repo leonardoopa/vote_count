@@ -75,6 +75,22 @@ class Ler(unittest.TestCase):
                 self.assertNotIn("imagem", corpo)
                 self.assertIn("ANUNCIO_IMAGEM ignorado", aviso)
 
+    def test_icone_aceita_http_ou_arquivo_de_web_anuncios(self):
+        for icone in ("https://cdn.exemplo.com.br/logo.png", "/anuncios/outlets-import.jpg", "/anuncios/marca-2.webp"):
+            with self.subTest(icone=icone):
+                corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ICONE=f" {icone} ")
+                self.assertEqual(corpo["icone"], icone)
+                self.assertEqual(aviso, "")
+
+    def test_icone_ruim_sai_sem_icone_e_com_aviso_mas_o_texto_fica(self):
+        for icone in ("javascript:alert(1)", "data:image/png;base64,AAAA", "/anuncios/../servidor.py", "/anuncios/Logo.png",
+                      "/anuncios/logo.svg", "/js/logo.png", "anuncios/logo.png", "//exemplo.com/logo.png"):
+            with self.subTest(icone=icone):
+                corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ICONE=icone)
+                self.assertTrue(corpo["ativo"])
+                self.assertNotIn("icone", corpo)
+                self.assertIn("ANUNCIO_ICONE ignorado", aviso)
+
     def test_whatsapp_vira_link_wa_me_com_mensagem_padrao(self):
         corpo, aviso = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_WHATSAPP="5581999999999")
         self.assertEqual(corpo["link"], "https://wa.me/5581999999999?text=" + quote(anuncio.MENSAGEM_PADRAO))

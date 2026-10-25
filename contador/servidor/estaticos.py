@@ -10,8 +10,10 @@ from contador.tse import catalogo
 
 SERVICE_WORKER = WEB / "sw.js"
 
-ARQUIVO_WEB = re.compile(r"^/(estilo\.css|js/[a-z0-9-]+\.js)$")  # os únicos caminhos que saem direto de web/
-TIPOS_DA_WEB = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
+# os únicos caminhos que saem direto de web/; anuncios/ guarda o ícone do anunciante (ANUNCIO_ICONE)
+ARQUIVO_WEB = re.compile(r"^/(estilo\.css|js/[a-z0-9-]+\.js|anuncios/[a-z0-9-]+\.(?:png|jpg|webp))$")
+TIPOS_DA_WEB = {".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
 MAX_GZIP = 64
 _GZIP = OrderedDict()  # ETag -> conteúdo comprimido
 _TRAVA_GZIP = threading.Lock()
@@ -45,7 +47,7 @@ def arquivo_da_pasta_web(arquivo, tipo, cabecalhos=None):
 
 
 def arquivo_da_web(caminho, cabecalhos=None):
-    """(status, tipo, corpo, extras) de /estilo.css ou /js/<nome>.js, ou None se o caminho não é de um deles."""
+    """(status, tipo, corpo, extras) de /estilo.css, /js/<nome>.js ou /anuncios/<nome>.<png|jpg|webp>, ou None se o caminho não é de um deles."""
     if not ARQUIVO_WEB.match(caminho):
         return None
     arquivo = WEB / caminho[1:]

@@ -9,6 +9,7 @@
 <!-- bloco: pwa e prévia de compartilhamento (head) -->
 <link rel="stylesheet" href="/estilo.css">
 <script defer src="/js/base.js"></script>
+<script defer src="/js/tema.js"></script>
 <script defer src="/js/painel.js"></script>
 <script defer src="/js/resumo-exportar.js"></script>
 <script defer src="/js/comparar.js"></script>
@@ -48,6 +49,7 @@
     <div class="cabecalho-direita">
       <div class="selos" id="selos" aria-live="polite"></div>
       <span class="selo ao-vivo" id="ao-vivo" role="status" hidden></span>
+      <button class="botao" id="tema" type="button" aria-pressed="false">Modo escuro</button>
       <button class="botao" id="alertas" type="button" aria-pressed="false" hidden>Alertas: desligados</button>
       <button class="botao" id="abrir-busca" type="button" aria-keyshortcuts="/ Control+K Meta+K">Buscar <kbd>/</kbd></button>
       <button class="botao" id="abrir-comparar" type="button">Comparar</button>

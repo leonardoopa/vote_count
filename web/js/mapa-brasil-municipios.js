@@ -139,7 +139,7 @@ function rgbDaVariavel(nome) {
   }
   return cacheDeCores.get(chave);
 }
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { cacheDeCores.clear(); bm.cores.clear(); pintarMunicipios(); });
+window.addEventListener("tema", () => { cacheDeCores.clear(); bm.cores.clear(); pintarMunicipios(); });   // tema.js: sistema ou botão
 const rgbDoPartido = (partido) => rgbDaVariavel(corDoPartido(partido).slice(4, -1));
 const rgba = ([r, g, b], alfa) => `rgba(${r},${g},${b},${alfa.toFixed(2)})`;
 const forcaDaVantagem = (margem) => 0.35 + 0.65 * Math.min(Math.max(margem, 0), 20) / 20;   // a mesma de `pinturaDe`

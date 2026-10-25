@@ -23,8 +23,9 @@
   --p-vermelho: #e8101e;
   --p-outros: #898781;
 }
+/* Modo escuro: segue o sistema, a não ser que a pessoa escolha no botão de tema (tema.js grava data-tema no <html>). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-tema="claro"]) {
     color-scheme: dark;
     --page: #0d0d0d;
     --surface: #1a1a19;
@@ -46,6 +47,28 @@
     --p-vermelho: #ff2a2a;
   }
 }
+:root[data-tema="escuro"] {
+  color-scheme: dark;
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --border: rgba(255, 255, 255, 0.10);
+  --series: #3987e5;
+  --track: #0d366b;
+  --good: #0ca30c;
+  --wash: rgba(255, 255, 255, 0.06);
+  --p-azul: #2f6bff;
+  --p-laranja: #d95926;
+  --p-agua: #199e70;
+  --p-amarelo: #c98500;
+  --p-magenta: #d55181;
+  --p-violeta: #9085e9;
+  --p-vermelho: #ff2a2a;
+}
+:root[data-tema="claro"] { color-scheme: light; }
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -394,7 +417,7 @@ dialog.estreita { width: min(560px, calc(100vw - 24px)); }
 .so-incorporado { display: none; }
 html.embed .so-incorporado { display: block; }
 html.embed .pagina { max-width: 720px; padding: 12px 12px 20px; }
-html.embed :is(.anuncio, .abas, .filtros, .cabecalho-direita .botao, .painel > .coluna.centro, .painel > .coluna.dir, #indicadores, #evo, #exportar, #mais) { display: none; }
+html.embed :is(.anuncio, .abas, .filtros, .cabecalho-direita .botao, #tema, .painel > .coluna.centro, .painel > .coluna.dir, #indicadores, #evo, #exportar, #mais) { display: none; }
 html.embed .cabecalho { margin-bottom: 8px; }
 html.embed h1 { font-size: 1.125rem; }
 html.embed .painel { display: block; }

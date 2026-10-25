@@ -491,6 +491,32 @@ html.embed .rodape p:nth-child(2) { display: none; }
 #palco > .cartao .botao:hover { background: rgba(255, 255, 255, 0.15); }
 #palco > .cartao .evo-legenda li { padding: 2px 10px 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255, 255, 255, 0.05); font-size: 0.75rem; }
 #palco > .cartao .evo-rolagem thead th { background: #181613; }
+/* Modo claro: a pele escura vale só no modo escuro. Antes o cartão do mapa ficava escuro nos dois temas, e no celular,
+   onde ele ocupa quase a tela toda, trocar o tema parecia não fazer nada. */
+:root[data-tema="claro"] #palco > .cartao {
+  --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.10); --wash: rgba(11, 11, 11, 0.05); --series: #2a78d6; --track: #cde2fb; --good: #006300;
+  --p-azul: #0b4fff; --p-laranja: #eb6834; --p-agua: #1baf7a; --p-amarelo: #eda100; --p-magenta: #e87ba4;
+  --p-verde: #008300; --p-violeta: #6250d6; --p-vermelho: #e8101e; --p-outros: #898781;
+  background: var(--surface); box-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.25);
+}
+:root[data-tema="claro"] #palco > .cartao :is(.botao, .pt-link) { background: rgba(11, 11, 11, 0.04); }
+:root[data-tema="claro"] #palco > .cartao .botao:hover { background: rgba(11, 11, 11, 0.09); }
+:root[data-tema="claro"] #palco > .cartao .evo-legenda li { background: rgba(11, 11, 11, 0.03); }
+:root[data-tema="claro"] #palco > .cartao .evo-rolagem thead th { background: var(--surface); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-tema="escuro"]) #palco > .cartao {
+    --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10); --wash: rgba(11, 11, 11, 0.05); --series: #2a78d6; --track: #cde2fb; --good: #006300;
+    --p-azul: #0b4fff; --p-laranja: #eb6834; --p-agua: #1baf7a; --p-amarelo: #eda100; --p-magenta: #e87ba4;
+    --p-verde: #008300; --p-violeta: #6250d6; --p-vermelho: #e8101e; --p-outros: #898781;
+    background: var(--surface); box-shadow: 0 18px 50px -30px rgba(0, 0, 0, 0.25);
+  }
+  :root:not([data-tema="escuro"]) #palco > .cartao :is(.botao, .pt-link) { background: rgba(11, 11, 11, 0.04); }
+  :root:not([data-tema="escuro"]) #palco > .cartao .botao:hover { background: rgba(11, 11, 11, 0.09); }
+  :root:not([data-tema="escuro"]) #palco > .cartao .evo-legenda li { background: rgba(11, 11, 11, 0.03); }
+  :root:not([data-tema="escuro"]) #palco > .cartao .evo-rolagem thead th { background: var(--surface); }
+}
 #palco .mapa-svg path { transition: fill 0.8s ease, fill-opacity 0.8s ease, opacity 0.15s, filter 0.2s; }
 /* o mapa com o mouse em cima de um estado: os outros recuam */
 #mapa .mapa-svg svg:not(.focando) > g:first-child:hover path:not(:hover) { opacity: 0.55; }

@@ -878,3 +878,12 @@ html:not(.embed) .filtros label:has(#ambiente option[value="oficial"]:checked) {
 @media (max-width: 640px) and (max-height: 780px) {
   html:not(.embed) .anuncio-texto { -webkit-line-clamp: 1; }
 }
+
+/* Anúncio no celular: "Apresentado por" quebra em duas linhas curtas e o texto, alinhado à esquerda, usa até 3 linhas.
+   Antes ele ficava centralizado numa linha só, cortado em "...", longe do logo. */
+@media (max-width: 640px) {
+  html:not(.embed) .anuncio:not(.com-imagem) { gap: 8px; }
+  html:not(.embed) .anuncio-rotulo { font-size: 0.6875rem; line-height: 1.2; width: min-content; text-align: right; }
+  html:not(.embed) .anuncio-linha { gap: 8px; }
+  html:not(.embed) .anuncio-texto { text-align: left; font-size: 0.8125rem; -webkit-line-clamp: 3; }
+}

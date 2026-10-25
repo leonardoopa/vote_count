@@ -6,8 +6,11 @@ rótulo "Publicidade" sempre ao lado, e abre o link numa aba nova, marcado como 
 link https://wa.me/<número>?text=<mensagem>, com a mensagem de ANUNCIO_WHATSAPP_MENSAGEM ou uma padrão; ANUNCIO_LINK, se
 existir, vale mais. A imagem é opcional
 (ANUNCIO_IMAGEM, um endereço http ou https): quem visita a página baixa a imagem direto desse endereço, e o texto fica
-sempre junto dela, para quem não a vê.
+sempre junto dela, para quem não a vê. O ícone também é opcional (ANUNCIO_ICONE): uma fotinha pequena ao lado do
+texto, como o logo do anunciante. Vale um endereço http(s) ou um arquivo de web/anuncios/ (`/anuncios/<nome>.png`,
+`.jpg` ou `.webp`), servido por este mesmo servidor.
 """
+import re
 import os
 import sys
 from urllib.parse import quote, urlparse
@@ -19,6 +22,7 @@ MAX_MENSAGEM = 200
 MENSAGEM_PADRAO = "Olá! Vi o anúncio no Contador de votos e quero saber mais."
 ROTULO_PADRAO = "Publicidade"
 INATIVO = {"ativo": False}
+ICONE_LOCAL = re.compile(r"^/anuncios/[a-z0-9-]+\.(png|jpg|webp)$")  # arquivos de web/anuncios/, os mesmos que estaticos.py serve
 
 
 def limpar(texto, maximo):
@@ -80,6 +84,12 @@ def ler(ambiente):
             anuncio["imagem"] = imagem
         else:
             _avisar("ANUNCIO_IMAGEM ignorado: use um endereço http:// ou https://. O anúncio sai sem imagem.")
+    icone = ambiente.get("ANUNCIO_ICONE", "").strip()
+    if icone:
+        if link_valido(icone) or ICONE_LOCAL.match(icone):
+            anuncio["icone"] = icone
+        else:
+            _avisar("ANUNCIO_ICONE ignorado: use um endereço http:// ou https://, ou /anuncios/<nome>.png (.jpg, .webp). O anúncio sai sem ícone.")
     return anuncio
 
 

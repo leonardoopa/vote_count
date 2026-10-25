@@ -124,6 +124,9 @@ class Ler(unittest.TestCase):
         corpo, _ = ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_LINK="javascript:alert(1)", ANUNCIO_WHATSAPP="5581999999999")
         self.assertTrue(corpo["link"].startswith("https://wa.me/5581999999999"))
 
+    def test_rotulo_traco_esconde_o_rotulo(self):
+        self.assertEqual(ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ROTULO=" - ")[0]["rotulo"], "")
+
     def test_rotulo_invalido_volta_ao_padrao(self):
         self.assertEqual(ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ROTULO="x" * 40)[0]["rotulo"], "Publicidade")
         self.assertEqual(ler(ANUNCIO_TEXTO="Oferta", ANUNCIO_ROTULO="")[0]["rotulo"], "Publicidade")

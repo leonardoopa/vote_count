@@ -21,6 +21,7 @@ MAX_LINK = 300
 MAX_MENSAGEM = 200
 MENSAGEM_PADRAO = "Olá! Vi o anúncio no Contador de votos e quero saber mais."
 ROTULO_PADRAO = "Publicidade"
+SEM_ROTULO = "-"  # ANUNCIO_ROTULO=- esconde o rótulo; a faixa continua marcada como publicidade para leitor de tela
 INATIVO = {"ativo": False}
 ICONE_LOCAL = re.compile(r"^/anuncios/[a-z0-9-]+\.(png|jpg|webp)$")  # arquivos de web/anuncios/, os mesmos que estaticos.py serve
 
@@ -61,7 +62,8 @@ def ler(ambiente):
     if not texto:
         _avisar(f"ANUNCIO_TEXTO ignorado: precisa ter de 1 a {MAX_TEXTO} caracteres, numa linha só.")
         return INATIVO
-    anuncio = {"ativo": True, "texto": texto, "rotulo": limpar(ambiente.get("ANUNCIO_ROTULO", ""), MAX_ROTULO) or ROTULO_PADRAO}
+    rotulo = limpar(ambiente.get("ANUNCIO_ROTULO", ""), MAX_ROTULO)
+    anuncio = {"ativo": True, "texto": texto, "rotulo": "" if rotulo == SEM_ROTULO else rotulo or ROTULO_PADRAO}
     link = ambiente.get("ANUNCIO_LINK", "").strip()
     if link:
         if link_valido(link):

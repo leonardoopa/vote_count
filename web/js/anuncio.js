@@ -33,7 +33,7 @@ async function carregarAnuncio() {
       ? criar("a", { class: "anuncio-conteudo", href: corpo.link, target: "_blank", rel: "sponsored noopener noreferrer" }, ...partes)
       : criar("div", { class: "anuncio-conteudo" }, ...partes);
     faixa.classList.toggle("com-imagem", ehHttp(corpo.imagem));
-    faixa.replaceChildren(criar("span", { class: "anuncio-rotulo" }, corpo.rotulo), conteudo);
+    faixa.replaceChildren(...(corpo.rotulo ? [criar("span", { class: "anuncio-rotulo" }, corpo.rotulo)] : []), conteudo);
     medirAnuncio();
   } catch { /* sem faixa: o placar não depende dela */ }
 }

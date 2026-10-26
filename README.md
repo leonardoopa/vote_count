@@ -438,3 +438,4 @@ Limites conhecidos:
 
 - Especificação dos arquivos e códigos das eleições: <https://www.tse.jus.br/eleicoes/informacoes-tecnicas-sobre-a-divulgacao-de-resultados>
 - Resultados no navegador: <https://resultados.tse.jus.br>
+
